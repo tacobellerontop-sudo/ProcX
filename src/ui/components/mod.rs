@@ -1,0 +1,46 @@
+//! Reusable UI building blocks.
+
+pub mod charts;
+pub mod dialogs;
+pub mod list_table;
+pub mod metrics;
+pub mod process_table;
+pub mod sidebar;
+pub mod tables;
+
+use egui::{Frame, Margin, RichText, Stroke};
+
+use super::theme::Palette;
+
+/// A bordered content section with a compact title row.
+pub fn section<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let palette = Palette::of(ui);
+    Frame::new()
+        .fill(palette.surface)
+        .stroke(Stroke::new(1.0, palette.border))
+        .corner_radius(3)
+        .inner_margin(Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new(title).strong().color(palette.muted).small());
+            ui.add_space(2.0);
+            add(ui)
+        })
+        .inner
+}
+
+/// Page title with an optional right-aligned subtitle.
+pub fn page_header(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>) -> egui::Response {
+    let response = ui
+        .horizontal(|ui| {
+            ui.heading(title);
+            if let Some(sub) = subtitle {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(RichText::new(sub).color(Palette::of(ui).muted));
+                });
+            }
+        })
+        .response;
+    ui.add_space(6.0);
+    response
+}
