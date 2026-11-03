@@ -22,12 +22,48 @@ pub fn section_shortcut(section: Section) -> KeyboardShortcut {
 }
 
 pub const REFRESH_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F5);
+pub const HELP_SHORTCUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
+
+/// Every shortcut, for the help dialog: (keys, description).
+pub fn all_shortcuts(ctx: &egui::Context) -> Vec<(String, String)> {
+    let mut list: Vec<(String, String)> = Section::ALL
+        .iter()
+        .map(|&s| {
+            (
+                ctx.format_shortcut(&section_shortcut(s)),
+                format!("Go to {}", s.label()),
+            )
+        })
+        .collect();
+    list.extend(
+        [
+            ("F5", "Take a sample now"),
+            ("F1", "Show keyboard shortcuts"),
+            ("Ctrl+F", "Processes: focus the filter"),
+            ("Ctrl+C", "Processes: copy the selected rows"),
+            (
+                "Delete",
+                "Processes: end the selected processes (with confirmation)",
+            ),
+            ("Enter", "Processes: open details of the selected process"),
+            (
+                "Shift / Ctrl + click",
+                "Processes: select a range / add to the selection",
+            ),
+            ("Double-click", "Charts on the History page: reset zoom"),
+            ("Esc", "Close a dialog"),
+        ]
+        .map(|(k, d)| (k.to_owned(), d.to_owned())),
+    );
+    list
+}
 
 /// Actions triggered by global shortcuts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GlobalAction {
     Navigate(Section),
     Refresh,
+    Help,
 }
 
 /// Consumes global shortcuts for this frame.
@@ -35,6 +71,9 @@ pub fn handle_shortcuts(ctx: &egui::Context) -> Option<GlobalAction> {
     ctx.input_mut(|input| {
         if input.consume_shortcut(&REFRESH_SHORTCUT) {
             return Some(GlobalAction::Refresh);
+        }
+        if input.consume_shortcut(&HELP_SHORTCUT) {
+            return Some(GlobalAction::Help);
         }
         Section::ALL
             .into_iter()

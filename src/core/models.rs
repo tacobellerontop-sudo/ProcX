@@ -340,6 +340,8 @@ pub struct ActivityEvent {
 #[derive(Debug, Clone)]
 pub struct SystemSnapshot {
     pub captured_at: SystemTime,
+    /// Local time offset from UTC when the sample was taken (`None` = unknown).
+    pub utc_offset_secs: Option<i32>,
     /// Time spent collecting this sample; useful for diagnosing overhead.
     pub collection_time: Duration,
     pub uptime: Option<Duration>,

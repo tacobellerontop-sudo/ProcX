@@ -37,6 +37,8 @@ pub enum ProcessRequest {
         start: StartType,
     },
     ListStartup,
+    /// Start an elevated instance (UAC prompt); the user asked for it.
+    RelaunchElevated,
     /// An enable/disable the user already confirmed.
     SetStartupStatus {
         source: StartupSource,
@@ -61,6 +63,7 @@ pub enum ProcessResponse {
         result: std::result::Result<(), String>,
     },
     Startup(std::result::Result<Vec<StartupEntry>, String>),
+    Relaunched(std::result::Result<(), String>),
     StartupChanged {
         action: String,
         result: std::result::Result<(), String>,
@@ -187,6 +190,8 @@ fn handle(request: ProcessRequest) -> Vec<ProcessResponse> {
             ]
         }
         ProcessRequest::ListStartup => vec![ProcessResponse::Startup(platform::list_startup())],
+        // Blocks while the UAC prompt is open, which is why it runs here.
+        ProcessRequest::RelaunchElevated => vec![ProcessResponse::Relaunched(platform::relaunch_elevated())],
         ProcessRequest::SetStartupStatus { source, name, status } => {
             let verb = match status {
                 StartupStatus::Enabled => "Enable",

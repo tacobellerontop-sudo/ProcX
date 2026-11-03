@@ -2,6 +2,7 @@
 //! it renders state received from background workers.
 
 pub mod components;
+pub mod icon;
 pub mod navigation;
 pub mod pages;
 pub mod theme;

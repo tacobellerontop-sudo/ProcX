@@ -203,7 +203,7 @@ impl DetailsPage {
             |t| {
                 format!(
                     "{} ({})",
-                    time::format_utc(t),
+                    time::format_local(t),
                     time::relative(t, std::time::SystemTime::now())
                 )
             },

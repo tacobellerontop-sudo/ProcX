@@ -6,6 +6,7 @@ use ::windows::Win32::Foundation::HANDLE;
 use ::windows::Win32::Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation};
 use ::windows::Win32::System::ProcessStatus::{GetPerformanceInfo, PERFORMANCE_INFORMATION};
 use ::windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+use ::windows::Win32::System::Time::{GetTimeZoneInformation, TIME_ZONE_INFORMATION};
 
 use super::handle::OwnedHandle;
 use crate::platform::KernelCounters;
@@ -63,4 +64,23 @@ pub fn is_elevated() -> Option<bool> {
     }
     .ok()?;
     Some(elevation.TokenIsElevated != 0)
+}
+
+/// Current offset of local time from UTC in seconds (east positive),
+/// including daylight saving time when it is in effect.
+pub fn utc_offset_secs() -> Option<i32> {
+    const TIME_ZONE_ID_UNKNOWN: u32 = 0;
+    const TIME_ZONE_ID_STANDARD: u32 = 1;
+    const TIME_ZONE_ID_DAYLIGHT: u32 = 2;
+    let mut tz = TIME_ZONE_INFORMATION::default();
+    // SAFETY: valid out-pointer.
+    let id = unsafe { GetTimeZoneInformation(&mut tz) };
+    let bias_minutes = match id {
+        TIME_ZONE_ID_UNKNOWN => tz.Bias,
+        TIME_ZONE_ID_STANDARD => tz.Bias + tz.StandardBias,
+        TIME_ZONE_ID_DAYLIGHT => tz.Bias + tz.DaylightBias,
+        _ => return None,
+    };
+    // UTC = local + bias, so the offset is the negated bias.
+    Some(-bias_minutes * 60)
 }

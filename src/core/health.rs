@@ -85,6 +85,7 @@ mod tests {
 
     fn snapshot() -> SystemSnapshot {
         SystemSnapshot {
+            utc_offset_secs: None,
             captured_at: SystemTime::now(),
             collection_time: Duration::ZERO,
             uptime: None,

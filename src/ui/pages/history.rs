@@ -15,7 +15,7 @@ use crate::ui::components::list_table::{self, ListColumn, ListSort, ListTable};
 use crate::ui::components::{page_header, section};
 use crate::ui::theme::Palette;
 use crate::utils::formatting::{self as fmt, UNAVAILABLE};
-use crate::utils::time::format_clock;
+use crate::utils::time::{format_clock, zone_suffix};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HistoryAction {
@@ -101,12 +101,12 @@ const COLUMNS: [ListColumn; 8] = [
     ListColumn {
         label: "First recorded",
         width: 120.0,
-        tooltip: "First time ProcX saw this process instance (UTC)",
+        tooltip: "First time ProcX saw this process instance",
     },
     ListColumn {
         label: "Last recorded",
         width: 120.0,
-        tooltip: "Last time ProcX saw this process instance (UTC)",
+        tooltip: "Last time ProcX saw this process instance",
     },
     ListColumn {
         label: "Avg CPU",
@@ -196,6 +196,10 @@ fn clock(ts_ms: i64, with_date: bool) -> String {
 }
 
 impl HistoryPage {
+    pub fn status(&self) -> Option<&HistoryStatus> {
+        self.status.as_ref()
+    }
+
     pub fn on_status(&mut self, status: HistoryStatus) {
         self.status = Some(status);
     }
@@ -306,7 +310,7 @@ impl HistoryPage {
                     fmt::thousands(stats.process_rows)
                 ));
                 if let Some(oldest) = stats.oldest_ms {
-                    parts.push(format!("oldest {} UTC", clock(oldest, true)));
+                    parts.push(format!("oldest {}{}", clock(oldest, true), zone_suffix()));
                 }
             }
             ui.label(RichText::new(parts.join(" · ")).small().color(palette.muted));
@@ -371,10 +375,11 @@ impl HistoryPage {
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(format!(
-                    "{} points from {} to {} UTC. Drag or scroll to pan and zoom; double-click to reset.",
+                    "{} points from {} to {}{}. Drag or scroll to pan and zoom; double-click to reset.",
                     points.len(),
                     clock(from_ms, true),
-                    clock(to_ms, true)
+                    clock(to_ms, true),
+                    zone_suffix()
                 ))
                 .small()
                 .color(palette.muted),

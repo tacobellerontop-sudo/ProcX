@@ -118,8 +118,10 @@ const TIME_STEPS: [f64; 14] = [
     604800.0,
 ];
 
-/// Grid marks on whole minutes/hours/days, about `target` across the range.
-pub fn time_marks(from: f64, to: f64, target: f64) -> Vec<GridMark> {
+/// Grid marks on whole local minutes/hours/days, about `target` across the
+/// range. `offset_secs` is the local UTC offset.
+pub fn time_marks(from: f64, to: f64, target: f64, offset_secs: i32) -> Vec<GridMark> {
+    let offset = f64::from(offset_secs);
     let span = (to - from).max(1.0);
     let want = span / target.max(1.0);
     let step = TIME_STEPS
@@ -127,7 +129,7 @@ pub fn time_marks(from: f64, to: f64, target: f64) -> Vec<GridMark> {
         .copied()
         .find(|s| *s >= want)
         .unwrap_or(TIME_STEPS[TIME_STEPS.len() - 1]);
-    let mut v = (from / step).ceil() * step;
+    let mut v = ((from + offset) / step).ceil() * step - offset;
     let mut marks = Vec::new();
     while v <= to && marks.len() < 100 {
         marks.push(GridMark {
@@ -148,7 +150,7 @@ pub struct HistoryChartOptions {
     pub format_y: fn(f64) -> String,
 }
 
-/// A chart over absolute time (UTC). Charts sharing `link_group` pan and zoom
+/// A chart over absolute time (local when known, else UTC). Charts sharing `link_group` pan and zoom
 /// together on the time axis; double-click resets.
 pub fn history_chart(
     ui: &mut egui::Ui,
@@ -169,15 +171,19 @@ pub fn history_chart(
         .y_axis_min_width(36.0)
         .link_axis(egui::Id::unique(link_group), [true, false])
         .link_cursor(egui::Id::unique(link_group), [true, false])
-        .x_grid_spacer(|input| time_marks(input.bounds.0, input.bounds.1, 6.0))
+        .x_grid_spacer(|input| {
+            let offset = crate::utils::time::utc_offset().unwrap_or(0);
+            time_marks(input.bounds.0, input.bounds.1, 6.0, offset)
+        })
         .x_axis_formatter(move |mark, _| crate::utils::time::format_clock(mark.value as i64, with_date))
         .y_axis_formatter(move |mark, _| format_y(mark.value))
         .label_formatter(move |hover| match hover {
             HoverPosition::NearDataPoint {
                 plot_name, position, ..
             } => Some(format!(
-                "{plot_name}\n{} UTC: {}",
+                "{plot_name}\n{}{}: {}",
                 crate::utils::time::format_clock(position.x as i64, true),
+                crate::utils::time::zone_suffix(),
                 format_y(position.y)
             )),
             HoverPosition::Elsewhere { .. } => None,
@@ -230,13 +236,16 @@ mod tests {
 
     #[test]
     fn time_marks_land_on_round_times() {
-        let marks = time_marks(1_000.0, 1_000.0 + 3600.0, 6.0);
+        let marks = time_marks(1_000.0, 1_000.0 + 3600.0, 6.0, 0);
         assert!(
             marks
                 .iter()
                 .all(|m| m.step_size == 600.0 && m.value % 600.0 == 0.0)
         );
         assert_eq!(marks.len(), 6);
-        assert_eq!(time_marks(0.0, 30.0 * 86_400.0, 6.0)[0].step_size, 604_800.0);
+        assert_eq!(time_marks(0.0, 30.0 * 86_400.0, 6.0, 0)[0].step_size, 604_800.0);
+        // UTC+5:30: hourly marks fall on whole local hours (xx:30 UTC).
+        let marks = time_marks(0.0, 6.0 * 3600.0, 6.0, 19_800);
+        assert!(marks.iter().all(|m| (m.value + 19_800.0) % 3600.0 == 0.0));
     }
 }

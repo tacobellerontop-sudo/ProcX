@@ -194,6 +194,7 @@ impl LiveState {
                 self.last_sample_t = t;
                 self.last_update = Some(Instant::now());
                 self.series.push(t, &snapshot);
+                crate::utils::time::set_utc_offset(snapshot.utc_offset_secs);
                 for event in snapshot.activity.drain(..) {
                     if self.activity.len() == ACTIVITY_CAPACITY {
                         self.activity.pop_back();

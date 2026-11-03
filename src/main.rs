@@ -19,6 +19,7 @@ fn main() -> eframe::Result {
     let config_path = utils::paths::config_file();
     let loaded = Config::load_or_default(&config_path);
     logging::init(loaded.config.logging.level, &utils::paths::log_file());
+    logging::install_panic_hook();
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "ProcX starting");
     for warning in &loaded.warnings {
         tracing::warn!("{warning}");
@@ -29,7 +30,8 @@ fn main() -> eframe::Result {
             .with_title("ProcX")
             .with_app_id("procx")
             .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([800.0, 500.0]),
+            .with_min_inner_size([800.0, 500.0])
+            .with_icon(std::sync::Arc::new(ui::icon::icon_data())),
         persist_window: true,
         ..Default::default()
     };

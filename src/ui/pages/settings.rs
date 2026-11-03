@@ -40,9 +40,9 @@ impl SettingsPage {
         self.draft = saved.clone();
     }
 
-    fn unimplemented_note(ui: &mut egui::Ui, phase: &str) {
+    fn unimplemented_note(ui: &mut egui::Ui, reason: &str) {
         ui.label(
-            RichText::new(format!("Saved, but not applied yet ({phase})"))
+            RichText::new(format!("Saved, but not applied yet ({reason})"))
                 .small()
                 .color(Palette::of(ui).warning),
         );
@@ -89,7 +89,7 @@ impl SettingsPage {
                         ui.label("Minimize to tray");
                         ui.horizontal(|ui| {
                             ui.checkbox(&mut d.general.minimize_to_tray, "");
-                            Self::unimplemented_note(ui, "tray support is planned for Phase 6");
+                            Self::unimplemented_note(ui, "the system tray icon is not implemented");
                         });
                         ui.end_row();
                     });

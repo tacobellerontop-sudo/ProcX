@@ -39,14 +39,22 @@ An advanced process and system monitor for Windows 10/11 (x64), written in Rust 
   samples for the busiest processes. Writes are one transaction per interval; data older than the
   retention period (default 7 days) is deleted hourly. The History page shows zoomable CPU, memory,
   disk and network charts over 1 hour to 30 days (gaps where ProcX was not running), a searchable
-  process table with per-process charts, and CSV export to `%APPDATA%\ProcX\exports`. Times are UTC.
+  process table with per-process charts, and CSV export to `%APPDATA%\ProcX\exports` (CSV times are
+  UTC ISO-8601; the UI shows local time).
 - **Background collector**: all system queries run on a dedicated worker thread and reach the UI
   through a bounded channel, so the UI never blocks on the OS.
 - **Settings** persisted as TOML (`%APPDATA%\ProcX\procx.toml`), validated on load with safe
   defaults if the file is missing or invalid.
 - Dark theme by default, optional light theme. Keyboard shortcuts: `Ctrl+1`…`Ctrl+8` switch
-  sections, `F5` samples immediately.
+  sections, `F5` samples immediately, `F1` lists every shortcut.
 - Runs without administrator rights. Values the OS cannot provide are shown as `—`, never as `0`.
+  When administrator rights are needed (services, all-users startup entries, protected processes),
+  **Restart as administrator** in the status bar starts a new instance through the normal UAC
+  prompt after a confirmation; ProcX never elevates on its own.
+- Times are shown in local time (Windows time zone, including daylight saving); history spanning
+  a daylight-saving change is shown with the current offset.
+- Panics are written to the log file before the process exits, so release builds (which have no
+  console) still leave a trace.
 
 ## Building
 
@@ -70,10 +78,24 @@ src/
   platform/          OS abstraction; windows/ holds all windows-rs calls
   monitoring/        samplers (cpu, memory, disk, network, processes) and the collector thread
   ui/                theme, navigation, reusable components, one module per page
+  history/           aggregation, SQLite store, CSV export and the history thread
+  process/           explorer logic, tree, safety checks, worker for inspection and actions
   utils/             formatting, paths, time helpers
 ```
 
-UI code never calls OS APIs directly; it renders snapshots produced by the collector.
+UI code never calls OS APIs directly; it renders snapshots produced by the collector, and slow or
+blocking work (process inspection, services, startup, UAC, SQLite) runs on worker threads that
+reply over channels.
+
+## Known limitations
+
+- **No system tray icon.** "Minimize to tray" is saved in Settings but not applied. Recording
+  continues while the window is minimized because collection does not depend on the UI.
+- **Startup**: scheduled tasks, services and shell extensions that start with Windows are not listed.
+- **History** samples CPU and memory only for the busiest processes each interval (15 by CPU plus
+  15 by memory); lifetimes are recorded for every process.
+- Services and startup changes were tested read-only in CI; changing them needs a real Windows
+  session with administrator rights.
 
 ## Roadmap
 
@@ -82,4 +104,5 @@ UI code never calls OS APIs directly; it renders snapshots produced by the colle
 3. ~~Performance: per-core CPU, memory/page file, per-disk, per-interface charts~~ (done)
 4. ~~Windows integration: services and startup managers~~ (done)
 5. ~~History: SQLite recording keyed by process instance, charts, CSV export~~ (done)
-6. Polish: tray, more shortcuts, release builds
+6. ~~Polish: local time, restart as administrator, shortcut help, icon, crash logging, release
+   builds~~ (done; tray icon not implemented, see Known limitations)

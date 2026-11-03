@@ -117,6 +117,17 @@ pub fn kernel_counters() -> Option<KernelCounters> {
     imp::kernel_counters()
 }
 
+/// Starts an elevated copy of ProcX via the UAC prompt. Only called after
+/// the user explicitly asks for it; the caller then exits this instance.
+pub fn relaunch_elevated() -> Result<(), String> {
+    imp::relaunch_elevated()
+}
+
+/// Local time offset from UTC in seconds, if known.
+pub fn utc_offset_secs() -> Option<i32> {
+    imp::utc_offset_secs()
+}
+
 /// Whether the current process runs with an elevated (administrator) token.
 pub fn is_elevated() -> Option<bool> {
     imp::is_elevated()
@@ -163,6 +174,12 @@ mod tests {
     fn first_physical_disk_reports_counters() {
         let c = super::physical_disk_counters(0).expect("PhysicalDrive0 should be queryable");
         assert!(c.query_time > 0);
+    }
+
+    #[test]
+    fn utc_offset_is_plausible() {
+        let offset = super::utc_offset_secs().expect("time zone should be readable");
+        assert!((-14 * 3600..=14 * 3600).contains(&offset));
     }
 
     #[test]

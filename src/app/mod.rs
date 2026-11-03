@@ -46,6 +46,8 @@ pub struct ProcxApp {
     notice: Option<(String, bool, Instant)>,
     own_pid: u32,
     first_frame: bool,
+    show_help: bool,
+    confirm_elevate: bool,
 }
 
 const NOTICE_DURATION: Duration = Duration::from_secs(8);
@@ -109,6 +111,8 @@ impl ProcxApp {
             notice: None,
             own_pid: std::process::id(),
             first_frame: true,
+            show_help: false,
+            confirm_elevate: false,
         }
     }
 
@@ -137,7 +141,7 @@ impl ProcxApp {
         self.section = Section::Details;
     }
 
-    fn handle_worker_responses(&mut self) {
+    fn handle_worker_responses(&mut self, ctx: &egui::Context) {
         let responses: Vec<ProcessResponse> = match &self.worker {
             Some(w) => w.drain().collect(),
             None => return,
@@ -156,6 +160,11 @@ impl ProcxApp {
                     self.notify(format!("Could not open file location: {e}"), true)
                 }
                 ProcessResponse::Services(result) => self.services_page.on_services(result),
+                ProcessResponse::Relaunched(Ok(())) => {
+                    tracing::info!("elevated instance started; closing this one");
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                ProcessResponse::Relaunched(Err(e)) => self.notify(e, true),
                 ProcessResponse::Startup(result) => self.startup_page.on_entries(result),
                 ProcessResponse::ServiceChanged { action, result }
                 | ProcessResponse::StartupChanged { action, result } => match result {
@@ -354,7 +363,7 @@ impl ProcxApp {
         self.config = new;
     }
 
-    fn status_bar(&self, ui: &mut egui::Ui) {
+    fn status_bar(&mut self, ui: &mut egui::Ui) {
         let p = Palette::of(ui);
         ui.horizontal(|ui| {
             let alive = self.collector.as_ref().is_some_and(Collector::is_alive);
@@ -379,6 +388,31 @@ impl ProcxApp {
                 )
                 .on_hover_text("Time the background collector spent gathering the last sample");
             }
+            let history = match (&self.history, self.history_page.status()) {
+                (None, _) => Some((
+                    p.critical,
+                    "History stopped",
+                    "The history thread is not running".to_owned(),
+                )),
+                (Some(_), Some(s)) if s.error.is_some() => {
+                    Some((p.critical, "History error", s.error.clone().unwrap_or_default()))
+                }
+                (Some(_), Some(s)) if s.enabled => Some((
+                    p.ok,
+                    "Recording",
+                    format!(
+                        "Recording history every {} s to {}",
+                        self.config.history.sample_interval_secs,
+                        s.path.display()
+                    ),
+                )),
+                (Some(_), Some(_)) => Some((p.muted, "History off", "History recording is off".to_owned())),
+                (Some(_), None) => None,
+            };
+            if let Some((color, text, tip)) = history {
+                ui.separator();
+                status_dot(ui, color, RichText::new(text).small()).on_hover_text(tip);
+            }
             if let Some((text, is_error, at)) = &self.notice
                 && at.elapsed() < NOTICE_DURATION
             {
@@ -390,12 +424,30 @@ impl ProcxApp {
                 );
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .small_button("?")
+                    .on_hover_text("Keyboard shortcuts (F1)")
+                    .clicked()
+                {
+                    self.show_help = true;
+                }
                 if let Some(info) = &self.live.info {
                     let privilege = match info.elevated {
                         Some(true) => "Administrator",
                         Some(false) => "Standard user",
                         None => "Privilege unknown",
                     };
+                    if info.elevated == Some(false)
+                        && ui
+                            .small_button("Restart as administrator…")
+                            .on_hover_text(
+                                "Needed to manage services and all-users startup entries, and to see details \
+                                 of protected processes. Windows asks for permission first.",
+                            )
+                            .clicked()
+                    {
+                        self.confirm_elevate = true;
+                    }
                     ui.label(RichText::new(privilege).small().color(p.muted))
                         .on_hover_text(
                             "ProcX runs with least privilege. Some details of system and other users' \
@@ -413,6 +465,57 @@ impl ProcxApp {
                 }
             });
         });
+    }
+}
+
+impl ProcxApp {
+    fn dialogs(&mut self, ctx: &egui::Context) {
+        use crate::ui::components::dialogs::{Confirm, ConfirmResult};
+        if self.confirm_elevate {
+            let dialog = Confirm {
+                id: "confirm_elevate",
+                title: "Restart as administrator?".into(),
+                message: "Windows will ask for permission to start ProcX with administrator rights. If you \
+                          allow it, this window closes and the new one opens. Monitoring works without \
+                          administrator rights; they are needed only to manage services, change all-users \
+                          startup entries and inspect protected processes."
+                    .into(),
+                confirm_label: "Restart".into(),
+                destructive: false,
+            };
+            match dialog.show(ctx) {
+                ConfirmResult::Pending => {}
+                ConfirmResult::Cancelled => self.confirm_elevate = false,
+                ConfirmResult::Confirmed => {
+                    self.confirm_elevate = false;
+                    self.send_worker(ProcessRequest::RelaunchElevated);
+                }
+            }
+        }
+        if self.show_help {
+            let shortcuts = navigation::all_shortcuts(ctx);
+            let modal = egui::Modal::new(egui::Id::unique("shortcuts_help")).show(ctx, |ui| {
+                ui.set_max_width(460.0);
+                ui.heading("Keyboard shortcuts");
+                ui.add_space(6.0);
+                egui::Grid::new("shortcuts_grid")
+                    .num_columns(2)
+                    .spacing([18.0, 4.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for (keys, what) in &shortcuts {
+                            ui.label(RichText::new(keys).monospace().strong());
+                            ui.label(what);
+                            ui.end_row();
+                        }
+                    });
+                ui.add_space(8.0);
+                ui.button("Close").clicked()
+            });
+            if modal.inner || modal.should_close() {
+                self.show_help = false;
+            }
+        }
     }
 }
 
@@ -435,7 +538,7 @@ impl eframe::App for ProcxApp {
         if new_snapshot && let Some(s) = &self.live.latest {
             self.details_page.on_snapshot(&s.processes, self.live.chart_now());
         }
-        self.handle_worker_responses();
+        self.handle_worker_responses(&ctx);
         self.handle_history_responses();
         if let Some((_, _, at)) = &self.notice {
             // Repaint once more so the notice disappears on time.
@@ -445,6 +548,7 @@ impl eframe::App for ProcxApp {
         match navigation::handle_shortcuts(&ctx) {
             Some(GlobalAction::Navigate(s)) => self.navigate(s),
             Some(GlobalAction::Refresh) => self.refresh_now(),
+            Some(GlobalAction::Help) => self.show_help = true,
             None => {}
         }
 
@@ -522,6 +626,7 @@ impl eframe::App for ProcxApp {
         self.handle_services_actions(services_actions);
         self.handle_startup_actions(&ctx, startup_actions);
         self.handle_history_actions(history_actions);
+        self.dialogs(&ctx);
         if let Some(SettingsAction::Save(new)) = settings_action {
             self.apply_settings(&ctx, new);
         }

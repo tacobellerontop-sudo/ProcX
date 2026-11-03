@@ -277,6 +277,7 @@ impl Worker {
             .unwrap_or_default();
 
         SystemSnapshot {
+            utc_offset_secs: platform::utc_offset_secs(),
             captured_at: now,
             collection_time: started.elapsed(),
             uptime: System::uptime().ok().map(Duration::from_secs),

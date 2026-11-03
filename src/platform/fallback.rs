@@ -22,6 +22,15 @@ pub fn is_elevated() -> Option<bool> {
     None
 }
 
+pub fn relaunch_elevated() -> Result<(), String> {
+    Err("Only available on Windows".into())
+}
+
+/// Development platforms show UTC; no timezone database is bundled.
+pub fn utc_offset_secs() -> Option<i32> {
+    None
+}
+
 const WINDOWS_ONLY: &str = "Only available on Windows";
 
 pub fn list_services() -> Result<Vec<crate::core::services::ServiceInfo>, String> {

@@ -252,7 +252,8 @@ impl ServicesPage {
             ui.label(
                 RichText::new(
                     "Running as a standard user: Windows usually requires administrator rights to start, stop \
-                     or reconfigure services. ProcX never elevates itself.",
+                     or reconfigure services. ProcX only elevates when you choose \"Restart as administrator\" \
+                     in the status bar.",
                 )
                 .small()
                 .color(palette.muted),

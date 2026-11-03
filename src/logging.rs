@@ -40,3 +40,22 @@ pub fn init(level: LogLevel, path: &Path) {
         eprintln!("ProcX: logging already initialized: {err}");
     }
 }
+
+/// Logs panics (with thread and location) before the default handler runs, so
+/// a crash in a release build without a console still leaves a trace.
+pub fn install_panic_hook() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let thread = std::thread::current();
+        let name = thread.name().unwrap_or("unnamed");
+        let message = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_owned())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic".to_owned());
+        let location = info.location().map_or_else(String::new, |l| format!(" at {l}"));
+        tracing::error!("panic in thread '{name}'{location}: {message}");
+        default(info);
+    }));
+}

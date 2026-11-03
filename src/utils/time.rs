@@ -1,5 +1,6 @@
 //! Time helpers.
 
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::{Duration, SystemTime};
 
 /// Describes how long ago `then` was relative to `now`, e.g. "12s ago".
@@ -13,25 +14,65 @@ pub fn relative(then: SystemTime, now: SystemTime) -> String {
     }
 }
 
-/// Formats a timestamp as `YYYY-MM-DD HH:MM:SS UTC` without a timezone database.
-pub fn format_utc(t: SystemTime) -> String {
-    let secs = t
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let (days, rem) = (secs / 86_400, secs % 86_400);
-    let (y, m, d) = civil_from_days(days as i64);
+/// Local UTC offset in seconds, published by the UI from collector samples
+/// (the platform query runs on the collector thread). `i32::MIN` = unknown.
+static UTC_OFFSET: AtomicI32 = AtomicI32::new(i32::MIN);
+
+pub fn set_utc_offset(offset_secs: Option<i32>) {
+    UTC_OFFSET.store(offset_secs.unwrap_or(i32::MIN), Ordering::Relaxed);
+}
+
+/// The local offset, or `None` when unknown (times are then shown in UTC).
+pub fn utc_offset() -> Option<i32> {
+    let v = UTC_OFFSET.load(Ordering::Relaxed);
+    (v != i32::MIN).then_some(v)
+}
+
+/// `" UTC"` when local time is unknown, so every displayed time says which
+/// zone it is in; empty when times are local.
+pub fn zone_suffix() -> &'static str {
+    if utc_offset().is_some() { "" } else { " UTC" }
+}
+
+fn unix_secs(t: SystemTime) -> i64 {
+    t.duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+}
+
+fn date_time(secs: i64) -> String {
+    let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    let (y, m, d) = civil_from_days(days);
     format!(
-        "{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02} UTC",
+        "{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}",
         rem / 3600,
         (rem % 3600) / 60,
         rem % 60
     )
 }
 
-/// Formats Unix seconds as `HH:MM` (UTC), prefixed with `MM-DD ` when
-/// `with_date` is set. Used for chart axes.
+/// Formats a timestamp as `YYYY-MM-DD HH:MM:SS UTC` without a timezone database.
+pub fn format_utc(t: SystemTime) -> String {
+    format!("{} UTC", date_time(unix_secs(t)))
+}
+
+/// Formats a timestamp in local time when the offset is known, else in UTC
+/// (labelled).
+pub fn format_local(t: SystemTime) -> String {
+    match utc_offset() {
+        Some(offset) => date_time(unix_secs(t) + i64::from(offset)),
+        None => format_utc(t),
+    }
+}
+
+/// Formats Unix seconds as `HH:MM` in local time (UTC when unknown),
+/// prefixed with `MM-DD ` when `with_date` is set. Used for chart axes.
 pub fn format_clock(unix_secs: i64, with_date: bool) -> String {
-    let (days, rem) = (unix_secs.div_euclid(86_400), unix_secs.rem_euclid(86_400));
+    format_clock_at(unix_secs, with_date, utc_offset().unwrap_or(0))
+}
+
+fn format_clock_at(unix_secs: i64, with_date: bool, offset_secs: i32) -> String {
+    let local = unix_secs + i64::from(offset_secs);
+    let (days, rem) = (local.div_euclid(86_400), local.rem_euclid(86_400));
     let clock = format!("{:02}:{:02}", rem / 3600, (rem % 3600) / 60);
     if with_date {
         let (_, m, d) = civil_from_days(days);
@@ -62,8 +103,11 @@ mod tests {
 
     #[test]
     fn clock_format() {
-        assert_eq!(format_clock(1_700_000_000, false), "22:13");
-        assert_eq!(format_clock(1_700_000_000, true), "11-14 22:13");
+        assert_eq!(format_clock_at(1_700_000_000, false, 0), "22:13");
+        assert_eq!(format_clock_at(1_700_000_000, true, 0), "11-14 22:13");
+        // UTC+2 crosses midnight into the next day.
+        assert_eq!(format_clock_at(1_700_000_000, true, 7_200), "11-15 00:13");
+        assert_eq!(format_clock_at(1_700_000_000, false, -5 * 3600), "17:13");
     }
 
     #[test]

@@ -219,3 +219,37 @@ pub fn open_file_location(path: &str) -> Result<(), String> {
         .map(drop)
         .map_err(|e| e.to_string())
 }
+
+/// Starts a new elevated instance of ProcX through the standard UAC prompt.
+/// Fails (without side effects) if the user declines the prompt.
+pub fn relaunch_elevated() -> Result<(), String> {
+    use ::windows::Win32::UI::Shell::ShellExecuteW;
+    use ::windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    use ::windows::core::{HSTRING, PCWSTR, w};
+
+    let exe = std::env::current_exe().map_err(|e| format!("cannot locate ProcX: {e}"))?;
+    let file = HSTRING::from(exe.as_os_str());
+    // SAFETY: all strings are valid and NUL-terminated for the call's duration.
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            w!("runas"),
+            &file,
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // ShellExecute returns a value greater than 32 on success.
+    let code = result.0 as isize;
+    if code > 32 {
+        Ok(())
+    } else if code == 5 {
+        // SE_ERR_ACCESSDENIED: the UAC prompt was declined.
+        Err("The administrator prompt was declined".into())
+    } else {
+        Err(format!(
+            "Windows could not start an elevated instance (code {code})"
+        ))
+    }
+}
