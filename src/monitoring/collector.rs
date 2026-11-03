@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime};
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, TrySendError};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 
-use super::disk::DiskSampler;
+use super::disk::{DiskSampler, PhysicalDiskSampler};
 use super::network::NetworkSampler;
 use super::processes::ProcessSampler;
 use super::{cpu, memory};
@@ -124,6 +124,7 @@ impl Drop for Collector {
 struct Worker {
     sys: System,
     disks: Option<DiskSampler>,
+    physical_disks: PhysicalDiskSampler,
     networks: Option<NetworkSampler>,
     processes: ProcessSampler,
     last_sample: Instant,
@@ -162,6 +163,7 @@ impl Worker {
             Self {
                 sys,
                 disks: DiskSampler::new(),
+                physical_disks: PhysicalDiskSampler::new(),
                 networks: NetworkSampler::new(),
                 processes,
                 last_sample: Instant::now(),
@@ -255,6 +257,7 @@ impl Worker {
             tracing::warn!("process enumeration failed: {err}");
         }
         let disks = self.disks.as_mut().map(|d| d.sample(elapsed)).unwrap_or_default();
+        let physical_disks = self.physical_disks.sample();
         let network = self
             .networks
             .as_mut()
@@ -268,6 +271,7 @@ impl Worker {
             cpu,
             memory,
             disks,
+            physical_disks,
             network,
             counts: SystemCounts {
                 processes: kernel.map_or(processes.processes.len(), |k| k.process_count as usize),

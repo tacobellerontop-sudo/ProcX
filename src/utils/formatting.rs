@@ -47,6 +47,16 @@ pub fn thousands(value: u64) -> String {
     out
 }
 
+/// Formats a link speed in decimal bits per second (as network gear does).
+pub fn bits_per_sec(bps: u64) -> String {
+    match bps {
+        b if b >= 1_000_000_000 => format!("{:.1} Gbps", b as f64 / 1e9),
+        b if b >= 1_000_000 => format!("{:.0} Mbps", b as f64 / 1e6),
+        b if b >= 1_000 => format!("{:.0} Kbps", b as f64 / 1e3),
+        b => format!("{b} bps"),
+    }
+}
+
 /// Formats a duration as `3d 04:05:06` or `04:05:06`.
 pub fn uptime(duration: Duration) -> String {
     let total = duration.as_secs();
@@ -78,6 +88,8 @@ mod tests {
         assert_eq!(rate(2048.0), "2.0 KB/s");
         assert_eq!(thousands(1_234_567), "1,234,567");
         assert_eq!(thousands(999), "999");
+        assert_eq!(bits_per_sec(1_000_000_000), "1.0 Gbps");
+        assert_eq!(bits_per_sec(100_000_000), "100 Mbps");
         assert_eq!(thousands(1000), "1,000");
     }
 

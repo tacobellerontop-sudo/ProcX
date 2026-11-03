@@ -203,10 +203,30 @@ fn disk_panel(ui: &mut egui::Ui, live: &LiveState, s: &SystemSnapshot, window: f
                 )
             })
             .collect();
-        headline(ui, &fmt::rate(read + write), "throughput", p.disk_read).on_hover_text(format!(
-            "Combined read + write throughput across all volumes. \
-             Disk active time is not measured yet (planned for Phase 3).{per_volume}"
-        ));
+        let busiest = s
+            .physical_disks
+            .iter()
+            .filter_map(|d| d.active_percent.map(|a| (d, a)))
+            .max_by(|a, b| a.1.total_cmp(&b.1));
+        match busiest {
+            Some((d, active)) => {
+                headline(
+                    ui,
+                    &format!("{active:.0}%"),
+                    &format!("active ({})", d.label()),
+                    p.disk_read,
+                )
+                .on_hover_text(format!(
+                    "Active time of the busiest physical disk. Throughput per volume:{per_volume}"
+                ));
+            }
+            None => {
+                headline(ui, &fmt::rate(read + write), "throughput", p.disk_read).on_hover_text(format!(
+                    "Combined read + write throughput across all volumes. \
+                     Disk active time is unavailable on this system.{per_volume}"
+                ));
+            }
+        }
         ui.label(
             RichText::new(format!("Read {} · Write {}", fmt::rate(read), fmt::rate(write)))
                 .small()

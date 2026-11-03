@@ -17,6 +17,7 @@ use crate::ui::components::metrics::status_dot;
 use crate::ui::components::sidebar;
 use crate::ui::navigation::{self, GlobalAction};
 use crate::ui::pages::details::{DetailsAction, DetailsPage};
+use crate::ui::pages::performance::PerformancePage;
 use crate::ui::pages::processes::{ProcessesAction, ProcessesPage};
 use crate::ui::pages::{self, settings::SettingsAction, settings::SettingsPage};
 use crate::ui::theme::{self, Palette};
@@ -31,6 +32,7 @@ pub struct ProcxApp {
     settings: SettingsPage,
     processes_page: ProcessesPage,
     details_page: DetailsPage,
+    performance_page: PerformancePage,
     worker: Option<ProcessWorker>,
     /// Transient status message: (text, is_error, shown_at).
     notice: Option<(String, bool, Instant)>,
@@ -46,10 +48,7 @@ impl ProcxApp {
         theme::install(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx, config.general.theme);
 
-        let mut live = LiveState::new(
-            config.monitoring.chart_window_secs,
-            config.monitoring.refresh_interval_ms,
-        );
+        let mut live = LiveState::new(config.monitoring.refresh_interval_ms);
         live.warnings.extend(loaded.warnings);
 
         let ctx = cc.egui_ctx.clone();
@@ -74,6 +73,7 @@ impl ProcxApp {
             }
         };
 
+        let config_chart_window = config.monitoring.chart_window_secs;
         Self {
             section: config.general.start_section,
             settings: SettingsPage::new(&config),
@@ -83,6 +83,7 @@ impl ProcxApp {
             live,
             processes_page: ProcessesPage::default(),
             details_page: DetailsPage::default(),
+            performance_page: PerformancePage::new(config_chart_window),
             worker,
             notice: None,
             own_pid: std::process::id(),
@@ -201,10 +202,7 @@ impl ProcxApp {
             theme::apply(ctx, new.general.theme);
         }
         if new.monitoring != self.config.monitoring {
-            self.live.resize(
-                new.monitoring.chart_window_secs,
-                new.monitoring.refresh_interval_ms,
-            );
+            self.live.resize(new.monitoring.refresh_interval_ms);
             if let Some(c) = &self.collector {
                 c.send(CollectorCommand::SetInterval(Duration::from_millis(
                     new.monitoring.refresh_interval_ms,
@@ -340,7 +338,10 @@ impl eframe::App for ProcxApp {
                     self.own_pid,
                 );
             }
-            Section::Performance => pages::performance::show(ui),
+            Section::Performance => {
+                self.performance_page
+                    .show(ui, &self.live, self.config.monitoring.refresh_interval_ms)
+            }
             Section::Services => pages::services::show(ui),
             Section::Startup => pages::startup::show(ui),
             Section::Details => {

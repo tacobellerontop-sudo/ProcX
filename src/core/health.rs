@@ -100,6 +100,7 @@ mod tests {
                 available_space: 2,
                 ..Default::default()
             }],
+            physical_disks: vec![],
             network: NetworkSnapshot::default(),
             counts: SystemCounts::default(),
             top_cpu: vec![],

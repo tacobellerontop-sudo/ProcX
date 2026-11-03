@@ -27,6 +27,18 @@ impl NetworkSampler {
                 transmitted_per_sec: per_second(data.transmitted(), elapsed_secs),
                 total_received: data.total_received(),
                 total_transmitted: data.total_transmitted(),
+                mac_address: Some(data.mac_address())
+                    .filter(|m| !m.is_unspecified())
+                    .map(|m| m.to_string()),
+                addresses: data
+                    .ip_networks()
+                    .iter()
+                    .map(|n| format!("{}/{}", n.addr, n.prefix))
+                    .collect(),
+                link_speed_bps: data
+                    .receive_link_speed()
+                    .or(data.transmit_link_speed())
+                    .filter(|&s| s > 0),
             };
             // Interfaces that have never carried traffic are noise in the UI.
             if iface.total_received == 0 && iface.total_transmitted == 0 {

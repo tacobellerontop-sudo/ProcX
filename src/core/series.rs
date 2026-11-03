@@ -41,6 +41,10 @@ impl TimeSeries {
         self.samples.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.samples.is_empty()
+    }
+
     #[cfg(test)]
     fn latest(&self) -> Option<f64> {
         self.samples.back().map(|&(_, v)| v)
@@ -59,8 +63,31 @@ impl TimeSeries {
     }
 
     /// Points with time expressed relative to `now` (so the newest is near 0).
-    pub fn relative_points(&self, now: f64) -> Vec<[f64; 2]> {
+    #[cfg(test)]
+    fn relative_points(&self, now: f64) -> Vec<[f64; 2]> {
         self.samples.iter().map(|&(t, v)| [t - now, v]).collect()
+    }
+
+    /// Points within `window` seconds of `now`, relative to `now`, thinned to
+    /// at most `max_points` by keeping every n-th sample (the newest is kept).
+    pub fn window_points(&self, now: f64, window: f64, max_points: usize) -> Vec<[f64; 2]> {
+        let in_window = self
+            .samples
+            .iter()
+            .rev()
+            .take_while(|&&(t, _)| now - t <= window)
+            .count();
+        let stride = in_window.div_ceil(max_points.max(1)).max(1);
+        let mut out: Vec<[f64; 2]> = self
+            .samples
+            .iter()
+            .rev()
+            .take(in_window)
+            .step_by(stride)
+            .map(|&(t, v)| [t - now, v])
+            .collect();
+        out.reverse();
+        out
     }
 }
 
@@ -79,6 +106,20 @@ mod tests {
             s.relative_points(4.0),
             vec![[-2.0, 20.0], [-1.0, 30.0], [0.0, 40.0]]
         );
+    }
+
+    #[test]
+    fn window_points_filter_and_thin() {
+        let mut s = TimeSeries::new(100);
+        for i in 0..100 {
+            s.push(i as f64, i as f64);
+        }
+        let pts = s.window_points(99.0, 9.0, 100);
+        assert_eq!(pts.len(), 10);
+        assert_eq!(pts.last(), Some(&[0.0, 99.0]));
+        let thin = s.window_points(99.0, 99.0, 10);
+        assert_eq!(thin.len(), 10);
+        assert_eq!(thin.last(), Some(&[0.0, 99.0]));
     }
 
     #[test]

@@ -23,7 +23,10 @@ egui_extras = { version = "0.37", default-features = false }
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_IO",
+    "Win32_System_Ioctl",
     "Win32_System_ProcessStatus",
     "Win32_System_RemoteDesktop",
     "Win32_System_SystemInformation",

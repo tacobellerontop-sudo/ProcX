@@ -22,6 +22,10 @@ pub fn is_elevated() -> Option<bool> {
     None
 }
 
+pub fn physical_disk_counters(_index: u32) -> Option<super::PhysicalDiskCounters> {
+    None
+}
+
 pub fn inspect_process(_key: ProcessKey) -> ProcessDetails {
     ProcessDetails {
         command_line: Err(UNSUPPORTED.into()),

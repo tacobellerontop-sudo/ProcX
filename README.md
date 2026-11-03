@@ -2,7 +2,7 @@
 
 An advanced process and system monitor for Windows 10/11 (x64), written in Rust with egui.
 
-> **Status: early development.** Overview, Processes, Details and Settings are functional.
+> **Status: early development.** Overview, Processes, Details, Performance and Settings are functional.
 > Other sections are visible in the sidebar but clearly marked as not implemented yet.
 
 ## Features so far
@@ -20,6 +20,10 @@ An advanced process and system monitor for Windows 10/11 (x64), written in Rust 
   immediately before `TerminateProcess` so a recycled PID is never hit.
 - **Details**: general info including command line, performance with per-process charts, threads,
   loaded modules, and parent/children. Access-denied parts are reported individually.
+- **Performance**: CPU (overall and per logical processor), memory (in use, cache, pools, commit,
+  page file), physical disks (active time and throughput via `IOCTL_DISK_PERFORMANCE`, no admin
+  needed) plus volumes, and per-interface network throughput, with 1 min to 1 hour ranges. Long
+  ranges are thinned for drawing and memory is capped at 3,600 samples per series.
 - **Background collector**: all system queries run on a dedicated worker thread and reach the UI
   through a bounded channel, so the UI never blocks on the OS.
 - **Settings** persisted as TOML (`%APPDATA%\ProcX\procx.toml`), validated on load with safe
@@ -59,7 +63,7 @@ UI code never calls OS APIs directly; it renders snapshots produced by the colle
 
 1. ~~Foundation~~ (done)
 2. ~~Process explorer: table, tree, details window, safe termination~~ (done)
-3. Performance: per-core CPU, memory/page file, per-disk, per-interface charts
+3. ~~Performance: per-core CPU, memory/page file, per-disk, per-interface charts~~ (done)
 4. Windows integration: services and startup managers
 5. History: SQLite recording keyed by process instance, charts, CSV export
 6. Polish: tray, more shortcuts, release builds

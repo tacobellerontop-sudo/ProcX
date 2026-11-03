@@ -51,6 +51,28 @@ pub struct KernelCounters {
     pub commit_total: u64,
     /// Commit limit in bytes.
     pub commit_limit: u64,
+    /// System file cache in bytes.
+    pub system_cache: u64,
+    pub kernel_paged: u64,
+    pub kernel_nonpaged: u64,
+}
+
+/// Cumulative counters of one physical disk.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PhysicalDiskCounters {
+    pub index: u32,
+    pub bytes_read: u64,
+    pub bytes_written: u64,
+    /// Cumulative idle time, 100 ns units.
+    pub idle_time: u64,
+    /// Timestamp of the reading, 100 ns units.
+    pub query_time: u64,
+}
+
+/// Reads counters of `\\.\PhysicalDrive{index}`, or `None` if it does not
+/// exist or cannot be queried.
+pub fn physical_disk_counters(index: u32) -> Option<PhysicalDiskCounters> {
+    imp::physical_disk_counters(index)
 }
 
 /// Reads kernel-wide counters, or `None` if the platform cannot provide them.
@@ -98,6 +120,12 @@ mod tests {
             start_time: me.key.start_time + 1,
         };
         assert!(super::terminate_process(stale).is_err());
+    }
+
+    #[test]
+    fn first_physical_disk_reports_counters() {
+        let c = super::physical_disk_counters(0).expect("PhysicalDrive0 should be queryable");
+        assert!(c.query_time > 0);
     }
 
     #[test]

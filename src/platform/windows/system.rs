@@ -12,7 +12,7 @@ use crate::platform::KernelCounters;
 
 /// Reads `GetPerformanceInfo`.
 ///
-/// The commit fields of `PERFORMANCE_INFORMATION` are expressed in pages,
+/// The commit, cache and kernel pool fields of `PERFORMANCE_INFORMATION` are expressed in pages,
 /// so they are multiplied by `PageSize`. The handle/process/thread counts are
 /// plain counts. The call needs no special privileges.
 /// <https://learn.microsoft.com/windows/win32/api/psapi/nf-psapi-getperformanceinfo>
@@ -34,6 +34,9 @@ pub fn kernel_counters() -> Option<KernelCounters> {
         process_count: u64::from(info.ProcessCount),
         commit_total: (info.CommitTotal as u64).saturating_mul(page),
         commit_limit: (info.CommitLimit as u64).saturating_mul(page),
+        system_cache: (info.SystemCache as u64).saturating_mul(page),
+        kernel_paged: (info.KernelPaged as u64).saturating_mul(page),
+        kernel_nonpaged: (info.KernelNonpaged as u64).saturating_mul(page),
     })
 }
 

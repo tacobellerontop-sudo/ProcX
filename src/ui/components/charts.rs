@@ -5,6 +5,9 @@ use egui_plot::{HoverPosition, Line, Plot, PlotPoints};
 
 use crate::core::series::TimeSeries;
 
+/// Upper bound of points drawn per series; longer ranges are thinned.
+const MAX_POINTS: usize = 600;
+
 pub struct ChartSeries<'a> {
     pub name: &'a str,
     pub data: &'a TimeSeries,
@@ -32,6 +35,7 @@ pub fn live_chart(ui: &mut egui::Ui, id: &str, now: f64, series: &[ChartSeries<'
         .allow_boxed_zoom(false)
         .allow_double_click_reset(false)
         .show_axes([false, true])
+        .show_grid([false, true])
         .y_axis_min_width(36.0)
         .y_axis_formatter(move |mark, _| format_y(mark.value))
         .label_formatter(move |hover| match hover {
@@ -54,13 +58,14 @@ pub fn live_chart(ui: &mut egui::Ui, id: &str, now: f64, series: &[ChartSeries<'
             .auto_bounds([false, false])
             .default_y_bounds(0.0, max);
     } else {
-        plot = plot.auto_bounds([false, true]);
+        // A minimum span keeps the axis readable when all values are ~0.
+        plot = plot.auto_bounds([false, true]).include_y(1024.0);
     }
     plot = plot.default_x_bounds(-opts.window_secs, 0.0);
 
     plot.show(ui, |plot_ui| {
         for s in series {
-            let points: PlotPoints<'_> = s.data.relative_points(now).into();
+            let points: PlotPoints<'_> = s.data.window_points(now, opts.window_secs, MAX_POINTS).into();
             plot_ui.line(
                 Line::new(s.name, points)
                     .color(s.color)

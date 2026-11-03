@@ -15,5 +15,8 @@ pub fn sample(sys: &mut System, kernel: Option<&KernelCounters>) -> MemorySnapsh
         swap_used: sys.used_swap(),
         commit_total: kernel.map(|k| k.commit_total),
         commit_limit: kernel.map(|k| k.commit_limit).filter(|&l| l > 0),
+        system_cache: kernel.map(|k| k.system_cache),
+        kernel_paged: kernel.map(|k| k.kernel_paged),
+        kernel_nonpaged: kernel.map(|k| k.kernel_nonpaged),
     }
 }

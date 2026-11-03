@@ -211,6 +211,10 @@ pub struct MemorySnapshot {
     pub commit_total: Option<u64>,
     /// Commit limit (physical memory + page files).
     pub commit_limit: Option<u64>,
+    /// File system cache.
+    pub system_cache: Option<u64>,
+    pub kernel_paged: Option<u64>,
+    pub kernel_nonpaged: Option<u64>,
 }
 
 impl MemorySnapshot {
@@ -244,6 +248,22 @@ impl DiskSnapshot {
     }
 }
 
+/// Throughput and activity of one physical disk.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PhysicalDiskSnapshot {
+    pub index: u32,
+    pub read_bytes_per_sec: f64,
+    pub write_bytes_per_sec: f64,
+    /// Share of time the disk was busy, 0..=100. `None` on the first sample.
+    pub active_percent: Option<f32>,
+}
+
+impl PhysicalDiskSnapshot {
+    pub fn label(&self) -> String {
+        format!("Disk {}", self.index)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DiskKindLabel {
     Ssd,
@@ -269,6 +289,10 @@ pub struct InterfaceSnapshot {
     pub transmitted_per_sec: f64,
     pub total_received: u64,
     pub total_transmitted: u64,
+    pub mac_address: Option<String>,
+    pub addresses: Vec<String>,
+    /// Link speed in bits per second, if reported.
+    pub link_speed_bps: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -322,6 +346,8 @@ pub struct SystemSnapshot {
     pub cpu: CpuSnapshot,
     pub memory: MemorySnapshot,
     pub disks: Vec<DiskSnapshot>,
+    /// Physical disks (Windows); empty where unsupported.
+    pub physical_disks: Vec<PhysicalDiskSnapshot>,
     pub network: NetworkSnapshot,
     pub counts: SystemCounts,
     pub top_cpu: Vec<ProcessSummary>,
