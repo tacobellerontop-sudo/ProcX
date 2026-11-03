@@ -1,0 +1,55 @@
+# ProcX
+
+An advanced process and system monitor for Windows 10/11 (x64), written in Rust with egui.
+
+> **Status: early development (Phase 1 of 6).** The Overview dashboard and Settings are functional.
+> Other sections are visible in the sidebar but clearly marked as not implemented yet.
+
+## Features so far
+
+- **Overview dashboard** with live CPU, memory, disk and network charts, process/thread/handle
+  counts, uptime, commit charge, page file usage, top CPU and memory consumers, health indicators
+  and a feed of process starts/exits.
+- **Background collector**: all system queries run on a dedicated worker thread and reach the UI
+  through a bounded channel, so the UI never blocks on the OS.
+- **Settings** persisted as TOML (`%APPDATA%\ProcX\procx.toml`), validated on load with safe
+  defaults if the file is missing or invalid.
+- Dark theme by default, optional light theme. Keyboard shortcuts: `Ctrl+1`…`Ctrl+8` switch
+  sections, `F5` samples immediately.
+- Runs without administrator rights. Values the OS cannot provide are shown as `—`, never as `0`.
+
+## Building
+
+```powershell
+cargo build --release
+.\target\release\procx.exe
+```
+
+Logs are written to `%APPDATA%\ProcX\procx.log`.
+
+The platform-independent parts also build and test on Linux (`cargo test`), which is useful for
+development; Windows-specific values are reported as unavailable there.
+
+## Architecture
+
+```
+src/
+  main.rs            entry point, logging, window setup
+  app/               top-level app state and frame layout; live view model
+  core/              models, config, events, errors, health rules, bounded time series
+  platform/          OS abstraction; windows/ holds all windows-rs calls
+  monitoring/        samplers (cpu, memory, disk, network, processes) and the collector thread
+  ui/                theme, navigation, reusable components, one module per page
+  utils/             formatting, paths, time helpers
+```
+
+UI code never calls OS APIs directly; it renders snapshots produced by the collector.
+
+## Roadmap
+
+1. ~~Foundation~~ (done)
+2. Process explorer: table, tree, details window, safe termination
+3. Performance: per-core CPU, memory/page file, per-disk, per-interface charts
+4. Windows integration: services and startup managers
+5. History: SQLite recording keyed by process instance, charts, CSV export
+6. Polish: tray, more shortcuts, release builds
