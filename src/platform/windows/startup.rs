@@ -133,8 +133,10 @@ fn approved_status(source: StartupSource, name: &str) -> StartupStatus {
 
 fn utf16_bytes_to_string(data: &[u8]) -> String {
     let units: Vec<u16> = data
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
         .collect();
     wide_to_string(&units)
 }
