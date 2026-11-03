@@ -8,25 +8,3 @@ pub mod processes;
 pub mod services;
 pub mod settings;
 pub mod startup;
-
-use crate::core::models::Section;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PageStatus {
-    Ready,
-    /// Not implemented yet; the value names the planned development phase.
-    Planned(&'static str),
-}
-
-pub fn status(section: Section) -> PageStatus {
-    match section {
-        Section::Overview
-        | Section::Settings
-        | Section::Processes
-        | Section::Details
-        | Section::Performance
-        | Section::Services
-        | Section::Startup => PageStatus::Ready,
-        Section::History => PageStatus::Planned("Phase 5"),
-    }
-}

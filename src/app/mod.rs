@@ -11,12 +11,14 @@ use egui::RichText;
 use crate::core::config::{Config, LoadedConfig};
 use crate::core::events::CollectorCommand;
 use crate::core::models::Section;
+use crate::history::worker::{HistoryRequest, HistoryResponse, HistoryWorker};
 use crate::monitoring::collector::{Collector, Notifier};
 use crate::process::worker::{ProcessRequest, ProcessResponse, ProcessWorker};
 use crate::ui::components::metrics::status_dot;
 use crate::ui::components::sidebar;
 use crate::ui::navigation::{self, GlobalAction};
 use crate::ui::pages::details::{DetailsAction, DetailsPage};
+use crate::ui::pages::history::{HistoryAction, HistoryPage};
 use crate::ui::pages::performance::PerformancePage;
 use crate::ui::pages::processes::{ProcessesAction, ProcessesPage};
 use crate::ui::pages::services::{ServicesAction, ServicesPage};
@@ -37,6 +39,8 @@ pub struct ProcxApp {
     performance_page: PerformancePage,
     services_page: ServicesPage,
     startup_page: StartupPage,
+    history_page: HistoryPage,
+    history: Option<HistoryWorker>,
     worker: Option<ProcessWorker>,
     /// Transient status message: (text, is_error, shown_at).
     notice: Option<(String, bool, Instant)>,
@@ -65,9 +69,18 @@ impl ProcxApp {
                 None
             }
         };
+        let history = match HistoryWorker::spawn(config.history.clone(), notify.clone()) {
+            Ok(h) => Some(h),
+            Err(err) => {
+                tracing::error!("{err}");
+                live.warnings.push(err.to_string());
+                None
+            }
+        };
         let collector = match Collector::spawn(
             Duration::from_millis(config.monitoring.refresh_interval_ms),
             notify,
+            history.as_ref().map(HistoryWorker::tick_sender),
         ) {
             Ok(c) => Some(c),
             Err(err) => {
@@ -90,6 +103,8 @@ impl ProcxApp {
             performance_page: PerformancePage::new(config_chart_window),
             services_page: ServicesPage::default(),
             startup_page: StartupPage::default(),
+            history_page: HistoryPage::default(),
+            history,
             worker,
             notice: None,
             own_pid: std::process::id(),
@@ -147,6 +162,60 @@ impl ProcxApp {
                     Ok(()) => self.notify(format!("{action}: done"), false),
                     Err(e) => self.notify(format!("{action} failed: {e}"), true),
                 },
+            }
+        }
+    }
+
+    fn send_history(&mut self, request: HistoryRequest) {
+        match &self.history {
+            Some(h) => h.send(request),
+            None => self.notify("History recording is not running", true),
+        }
+    }
+
+    fn handle_history_responses(&mut self) {
+        let responses: Vec<HistoryResponse> = match &self.history {
+            Some(h) => h.drain().collect(),
+            None => return,
+        };
+        for response in responses {
+            match response {
+                HistoryResponse::Status(status) => self.history_page.on_status(status),
+                HistoryResponse::Range {
+                    from_ms,
+                    to_ms,
+                    system,
+                    processes,
+                } => self.history_page.on_range(from_ms, to_ms, system, processes),
+                HistoryResponse::ProcessSeries { id, points } => self.history_page.on_series(id, points),
+                HistoryResponse::Exported(result) => {
+                    match &result {
+                        Ok(path) => self.notify(format!("Exported {}", path.display()), false),
+                        Err(e) => self.notify(format!("Export failed: {e}"), true),
+                    }
+                    self.history_page.on_exported(result);
+                }
+            }
+        }
+    }
+
+    fn handle_history_actions(&mut self, actions: Vec<HistoryAction>) {
+        for action in actions {
+            match action {
+                HistoryAction::Query { from_ms, to_ms } => {
+                    self.send_history(HistoryRequest::Range { from_ms, to_ms })
+                }
+                HistoryAction::ProcessSeries { id, from_ms, to_ms } => {
+                    self.send_history(HistoryRequest::ProcessSeries { id, from_ms, to_ms })
+                }
+                HistoryAction::ExportSystem { from_ms, to_ms } => {
+                    self.send_history(HistoryRequest::ExportSystem { from_ms, to_ms })
+                }
+                HistoryAction::ExportProcess { row, from_ms, to_ms } => {
+                    self.send_history(HistoryRequest::ExportProcess { row, from_ms, to_ms })
+                }
+                HistoryAction::ShowFile(path) => self.send_worker(ProcessRequest::OpenLocation(path)),
+                HistoryAction::OpenSettings => self.navigate(Section::Settings),
             }
         }
     }
@@ -269,6 +338,11 @@ impl ProcxApp {
         if new.general.theme != self.config.general.theme {
             theme::apply(ctx, new.general.theme);
         }
+        if new.history != self.config.history
+            && let Some(h) = &self.history
+        {
+            h.send(HistoryRequest::Configure(new.history.clone()));
+        }
         if new.monitoring != self.config.monitoring {
             self.live.resize(new.monitoring.refresh_interval_ms);
             if let Some(c) = &self.collector {
@@ -362,6 +436,7 @@ impl eframe::App for ProcxApp {
             self.details_page.on_snapshot(&s.processes, self.live.chart_now());
         }
         self.handle_worker_responses();
+        self.handle_history_responses();
         if let Some((_, _, at)) = &self.notice {
             // Repaint once more so the notice disappears on time.
             ctx.request_repaint_after(NOTICE_DURATION.saturating_sub(at.elapsed()));
@@ -392,6 +467,7 @@ impl eframe::App for ProcxApp {
         let mut details_actions = Vec::new();
         let mut services_actions = Vec::new();
         let mut startup_actions = Vec::new();
+        let mut history_actions = Vec::new();
         let elevated = self.live.info.as_ref().and_then(|i| i.elevated);
         let total_memory = self.live.latest.as_ref().map_or(0, |s| s.memory.total);
         let window = f64::from(self.config.monitoring.chart_window_secs);
@@ -432,7 +508,11 @@ impl eframe::App for ProcxApp {
                     window,
                 );
             }
-            Section::History => pages::history::show(ui),
+            Section::History => {
+                history_actions = self
+                    .history_page
+                    .show(ui, self.config.history.sample_interval_secs);
+            }
             Section::Settings => {
                 settings_action = self.settings.show(ui, &self.config, &self.config_path);
             }
@@ -441,6 +521,7 @@ impl eframe::App for ProcxApp {
         self.handle_details_actions(details_actions);
         self.handle_services_actions(services_actions);
         self.handle_startup_actions(&ctx, startup_actions);
+        self.handle_history_actions(history_actions);
         if let Some(SettingsAction::Save(new)) = settings_action {
             self.apply_settings(&ctx, new);
         }
@@ -449,6 +530,10 @@ impl eframe::App for ProcxApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         if let Some(mut collector) = self.collector.take() {
             collector.shutdown();
+        }
+        // After the collector, so the last partial interval is written.
+        if let Some(mut history) = self.history.take() {
+            history.shutdown();
         }
         if let Some(mut worker) = self.worker.take() {
             worker.shutdown();

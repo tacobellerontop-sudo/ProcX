@@ -33,6 +33,13 @@ An advanced process and system monitor for Windows 10/11 (x64), written in Rust 
   Startup folders, with publisher from the program's version information. Enable/disable uses the
   same `StartupApproved` flags as Task Manager and Windows Settings, after confirmation; entries
   are never deleted. Scheduled tasks are not listed yet.
+- **History**: a background thread records one sample per interval (default 30 s) into SQLite
+  (`%APPDATA%\ProcX\history.sqlite3`): system averages and CPU peak, a lifetime row for every
+  process instance (keyed by PID + creation time, so reused PIDs never merge), and CPU/memory
+  samples for the busiest processes. Writes are one transaction per interval; data older than the
+  retention period (default 7 days) is deleted hourly. The History page shows zoomable CPU, memory,
+  disk and network charts over 1 hour to 30 days (gaps where ProcX was not running), a searchable
+  process table with per-process charts, and CSV export to `%APPDATA%\ProcX\exports`. Times are UTC.
 - **Background collector**: all system queries run on a dedicated worker thread and reach the UI
   through a bounded channel, so the UI never blocks on the OS.
 - **Settings** persisted as TOML (`%APPDATA%\ProcX\procx.toml`), validated on load with safe
@@ -74,5 +81,5 @@ UI code never calls OS APIs directly; it renders snapshots produced by the colle
 2. ~~Process explorer: table, tree, details window, safe termination~~ (done)
 3. ~~Performance: per-core CPU, memory/page file, per-disk, per-interface charts~~ (done)
 4. ~~Windows integration: services and startup managers~~ (done)
-5. History: SQLite recording keyed by process instance, charts, CSV export
+5. ~~History: SQLite recording keyed by process instance, charts, CSV export~~ (done)
 6. Polish: tray, more shortcuts, release builds

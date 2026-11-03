@@ -27,7 +27,12 @@ pub fn log_file() -> PathBuf {
     app_dir().join("procx.log")
 }
 
-/// Default history database location (used from Phase 5 onward).
+/// Default history database location.
 pub fn default_database_file() -> PathBuf {
     app_dir().join("history.sqlite3")
+}
+
+/// Where CSV exports are written.
+pub fn exports_dir() -> PathBuf {
+    app_dir().join("exports")
 }

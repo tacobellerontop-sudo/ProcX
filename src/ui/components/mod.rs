@@ -44,20 +44,3 @@ pub fn page_header(ui: &mut egui::Ui, title: &str, subtitle: Option<&str>) -> eg
     ui.add_space(6.0);
     response
 }
-
-/// Clearly states that a section is not implemented yet, instead of showing
-/// an empty or fake UI.
-pub fn not_implemented(ui: &mut egui::Ui, title: &str, phase: &str, planned: &[&str]) {
-    page_header(ui, title, None);
-    section(ui, "STATUS", |ui| {
-        ui.label(
-            RichText::new(format!("Not implemented yet. Scheduled for {phase}."))
-                .color(Palette::of(ui).warning),
-        );
-        ui.add_space(4.0);
-        ui.label("Planned functionality:");
-        for item in planned {
-            ui.label(format!("  • {item}"));
-        }
-    });
-}

@@ -28,6 +28,19 @@ pub fn format_utc(t: SystemTime) -> String {
     )
 }
 
+/// Formats Unix seconds as `HH:MM` (UTC), prefixed with `MM-DD ` when
+/// `with_date` is set. Used for chart axes.
+pub fn format_clock(unix_secs: i64, with_date: bool) -> String {
+    let (days, rem) = (unix_secs.div_euclid(86_400), unix_secs.rem_euclid(86_400));
+    let clock = format!("{:02}:{:02}", rem / 3600, (rem % 3600) / 60);
+    if with_date {
+        let (_, m, d) = civil_from_days(days);
+        format!("{m:02}-{d:02} {clock}")
+    } else {
+        clock
+    }
+}
+
 /// Days since 1970-01-01 to a (year, month, day) civil date
 /// (Howard Hinnant's algorithm).
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
@@ -46,6 +59,12 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clock_format() {
+        assert_eq!(format_clock(1_700_000_000, false), "22:13");
+        assert_eq!(format_clock(1_700_000_000, true), "11-14 22:13");
+    }
 
     #[test]
     fn formats_utc_dates() {

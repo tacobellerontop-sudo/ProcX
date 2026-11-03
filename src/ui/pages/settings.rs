@@ -125,7 +125,14 @@ impl SettingsPage {
             ui.add_space(6.0);
 
             section(ui, "HISTORY", |ui| {
-                Self::unimplemented_note(ui, "history recording is planned for Phase 5");
+                ui.label(
+                    egui::RichText::new(
+                        "One sample per interval: system averages plus the busiest processes. \
+                         Older data is deleted after the retention period.",
+                    )
+                    .small()
+                    .color(Palette::of(ui).muted),
+                );
                 egui::Grid::new("set_hist")
                     .num_columns(2)
                     .spacing([24.0, 6.0])

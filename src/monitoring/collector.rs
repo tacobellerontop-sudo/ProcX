@@ -23,6 +23,8 @@ use crate::core::config::{MAX_REFRESH_MS, MIN_REFRESH_MS};
 use crate::core::errors::{ProcxError, Result};
 use crate::core::events::{CollectorCommand, CollectorEvent};
 use crate::core::models::{StaticSystemInfo, SystemCounts, SystemSnapshot};
+use crate::history::accumulate::HistoryTick;
+use crate::history::worker::TickSender;
 use crate::platform;
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
@@ -61,7 +63,7 @@ impl Collector {
     ///
     /// Fails with [`ProcxError::WorkerAlreadyRunning`] if another collector
     /// is still alive, which prevents duplicate workers.
-    pub fn spawn(interval: Duration, notify: Notifier) -> Result<Self> {
+    pub fn spawn(interval: Duration, notify: Notifier, history: Option<TickSender>) -> Result<Self> {
         if RUNNING.swap(true, Ordering::SeqCst) {
             return Err(ProcxError::WorkerAlreadyRunning("collector"));
         }
@@ -72,7 +74,13 @@ impl Collector {
             .name("procx-collector".into())
             .spawn(move || {
                 let _guard = RunningGuard;
-                Worker::run(clamp_interval(interval), &cmd_rx, &evt_tx, &notify);
+                Worker::run(
+                    clamp_interval(interval),
+                    &cmd_rx,
+                    &evt_tx,
+                    &notify,
+                    history.as_ref(),
+                );
                 tracing::info!("collector stopped");
             });
 
@@ -177,6 +185,7 @@ impl Worker {
         commands: &Receiver<CollectorCommand>,
         events: &Sender<CollectorEvent>,
         notify: &Notifier,
+        history: Option<&TickSender>,
     ) {
         let publish = |event: CollectorEvent| -> bool {
             match events.try_send(event) {
@@ -237,6 +246,9 @@ impl Worker {
             }
 
             let snapshot = worker.sample();
+            if let Some(h) = history {
+                h.send(HistoryTick::from_snapshot(&snapshot));
+            }
             if !publish(CollectorEvent::Snapshot(Box::new(snapshot))) {
                 break;
             }
@@ -308,9 +320,10 @@ mod tests {
     /// is process-wide.
     #[test]
     fn collector_produces_snapshots_and_rejects_duplicates() {
-        let mut collector = Collector::spawn(Duration::from_millis(MIN_REFRESH_MS), Arc::new(|| {})).unwrap();
+        let mut collector =
+            Collector::spawn(Duration::from_millis(MIN_REFRESH_MS), Arc::new(|| {}), None).unwrap();
         assert!(matches!(
-            Collector::spawn(Duration::from_secs(1), Arc::new(|| {})),
+            Collector::spawn(Duration::from_secs(1), Arc::new(|| {}), None),
             Err(ProcxError::WorkerAlreadyRunning(_))
         ));
 
@@ -336,6 +349,6 @@ mod tests {
         collector.shutdown();
         assert!(!collector.is_alive());
         // After shutdown a new collector may start.
-        drop(Collector::spawn(Duration::from_secs(1), Arc::new(|| {})).unwrap());
+        drop(Collector::spawn(Duration::from_secs(1), Arc::new(|| {}), None).unwrap());
     }
 }

@@ -5,6 +5,7 @@
 
 mod app;
 mod core;
+mod history;
 mod logging;
 mod monitoring;
 mod platform;
