@@ -20,8 +20,7 @@ pub enum PageStatus {
 
 pub fn status(section: Section) -> PageStatus {
     match section {
-        Section::Overview | Section::Settings => PageStatus::Ready,
-        Section::Processes | Section::Details => PageStatus::Planned("Phase 2"),
+        Section::Overview | Section::Settings | Section::Processes | Section::Details => PageStatus::Ready,
         Section::Performance => PageStatus::Planned("Phase 3"),
         Section::Services | Section::Startup => PageStatus::Planned("Phase 4"),
         Section::History => PageStatus::Planned("Phase 5"),

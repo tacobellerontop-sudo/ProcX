@@ -2,7 +2,7 @@
 
 An advanced process and system monitor for Windows 10/11 (x64), written in Rust with egui.
 
-> **Status: early development (Phase 1 of 6).** The Overview dashboard and Settings are functional.
+> **Status: early development.** Overview, Processes, Details and Settings are functional.
 > Other sections are visible in the sidebar but clearly marked as not implemented yet.
 
 ## Features so far
@@ -10,6 +10,16 @@ An advanced process and system monitor for Windows 10/11 (x64), written in Rust 
 - **Overview dashboard** with live CPU, memory, disk and network charts, process/thread/handle
   counts, uptime, commit charge, page file usage, top CPU and memory consumers, health indicators
   and a feed of process starts/exits.
+- **Process explorer**: flat or tree view with orphan detection (a parent link is accepted only if
+  the parent was created before the child, so reused PIDs are not mistaken for parents), sorting,
+  name/path/PID filtering, multi-select, column chooser, resizable columns, context menu (properties,
+  open location, copy, go to parent, select children, end process) and keyboard shortcuts
+  (`Ctrl+F`, `Ctrl+C`, `Delete`, `Enter`).
+- **Safe termination**: confirmation dialog; core Windows processes, processes Windows marks
+  critical, and ProcX itself are refused; the process identity (PID + creation time) is re-verified
+  immediately before `TerminateProcess` so a recycled PID is never hit.
+- **Details**: general info including command line, performance with per-process charts, threads,
+  loaded modules, and parent/children. Access-denied parts are reported individually.
 - **Background collector**: all system queries run on a dedicated worker thread and reach the UI
   through a bounded channel, so the UI never blocks on the OS.
 - **Settings** persisted as TOML (`%APPDATA%\ProcX\procx.toml`), validated on load with safe
@@ -48,7 +58,7 @@ UI code never calls OS APIs directly; it renders snapshots produced by the colle
 ## Roadmap
 
 1. ~~Foundation~~ (done)
-2. Process explorer: table, tree, details window, safe termination
+2. ~~Process explorer: table, tree, details window, safe termination~~ (done)
 3. Performance: per-core CPU, memory/page file, per-disk, per-interface charts
 4. Windows integration: services and startup managers
 5. History: SQLite recording keyed by process instance, charts, CSV export

@@ -34,6 +34,12 @@ impl SettingsPage {
         }
     }
 
+    /// Updates the draft after settings were changed elsewhere (e.g. the
+    /// process table's column chooser), unless the user has unsaved edits.
+    pub fn sync(&mut self, saved: &Config) {
+        self.draft = saved.clone();
+    }
+
     fn unimplemented_note(ui: &mut egui::Ui, phase: &str) {
         ui.label(
             RichText::new(format!("Saved, but not applied yet ({phase})"))

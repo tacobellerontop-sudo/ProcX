@@ -155,8 +155,7 @@ impl Worker {
         let mut processes = ProcessSampler::new(logical_cpus);
         // Prime the delta-based counters (CPU, per-process CPU, disk and
         // network I/O) so that the first published sample is meaningful.
-        let start = SystemTime::now();
-        processes.sample(&mut sys, start);
+        processes.sample(SystemTime::now());
         sys.refresh_cpu_usage();
 
         Ok((
@@ -251,7 +250,10 @@ impl Worker {
         let kernel = platform::kernel_counters();
         let cpu = cpu::sample(&mut self.sys);
         let memory = memory::sample(&mut self.sys, kernel.as_ref());
-        let processes = self.processes.sample(&mut self.sys, now);
+        let processes = self.processes.sample(now);
+        if let Some(err) = &processes.error {
+            tracing::warn!("process enumeration failed: {err}");
+        }
         let disks = self.disks.as_mut().map(|d| d.sample(elapsed)).unwrap_or_default();
         let network = self
             .networks
@@ -268,12 +270,13 @@ impl Worker {
             disks,
             network,
             counts: SystemCounts {
-                processes: kernel.map_or(processes.count, |k| k.process_count as usize),
+                processes: kernel.map_or(processes.processes.len(), |k| k.process_count as usize),
                 threads: kernel.map(|k| k.thread_count),
                 handles: kernel.map(|k| k.handle_count),
             },
             top_cpu: processes.top_cpu,
             top_memory: processes.top_memory,
+            processes: processes.processes,
             activity: processes.activity,
             activity_overflow: processes.activity_overflow,
         }

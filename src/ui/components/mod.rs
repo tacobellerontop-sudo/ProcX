@@ -3,6 +3,7 @@
 pub mod charts;
 pub mod dialogs;
 pub mod metrics;
+pub mod process_table;
 pub mod sidebar;
 pub mod tables;
 

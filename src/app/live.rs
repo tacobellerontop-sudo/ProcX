@@ -86,12 +86,17 @@ impl LiveState {
         }
     }
 
-    pub fn ingest(&mut self, event: CollectorEvent) {
+    /// Applies an event. Returns true if it was a new snapshot.
+    pub fn ingest(&mut self, event: CollectorEvent) -> bool {
         match event {
-            CollectorEvent::StaticInfo(info) => self.info = Some(*info),
+            CollectorEvent::StaticInfo(info) => {
+                self.info = Some(*info);
+                false
+            }
             CollectorEvent::Warning(w) => {
                 tracing::warn!("{w}");
                 self.warnings.push(w);
+                false
             }
             CollectorEvent::Snapshot(mut snapshot) => {
                 let t = self.epoch.elapsed().as_secs_f64();
@@ -113,6 +118,7 @@ impl LiveState {
                 }
                 self.activity_dropped += snapshot.activity_overflow;
                 self.latest = Some(snapshot);
+                true
             }
         }
     }

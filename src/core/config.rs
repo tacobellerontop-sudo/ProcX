@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use super::errors::{ProcxError, Result};
 use super::models::Section;
+use crate::process::explorer::ProcessColumn;
 
 pub const MIN_REFRESH_MS: u64 = 250;
 pub const MAX_REFRESH_MS: u64 = 10_000;
@@ -105,6 +106,24 @@ impl Default for MonitoringConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+pub struct ProcessesConfig {
+    /// Visible process table columns, in display order.
+    pub visible_columns: Vec<ProcessColumn>,
+    /// Show the parent/child tree instead of a flat list.
+    pub tree_view: bool,
+}
+
+impl Default for ProcessesConfig {
+    fn default() -> Self {
+        Self {
+            visible_columns: ProcessColumn::default_visible(),
+            tree_view: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct HistoryConfig {
     pub enabled: bool,
     pub retention_days: u32,
@@ -154,6 +173,7 @@ pub struct LoggingConfig {
 pub struct Config {
     pub general: GeneralConfig,
     pub monitoring: MonitoringConfig,
+    pub processes: ProcessesConfig,
     pub history: HistoryConfig,
     pub confirmations: ConfirmationConfig,
     pub logging: LoggingConfig,
@@ -221,6 +241,17 @@ impl Config {
             "history.sample_interval_secs",
             &mut w,
         );
+        let columns = &mut self.processes.visible_columns;
+        let before = columns.len();
+        let mut seen = std::collections::HashSet::new();
+        columns.retain(|c| seen.insert(*c));
+        if columns.len() != before {
+            w.push("processes.visible_columns contained duplicates; removed them".to_owned());
+        }
+        if !columns.contains(&ProcessColumn::Name) {
+            columns.insert(0, ProcessColumn::Name);
+            w.push("processes.visible_columns must include \"name\"; added it".to_owned());
+        }
         if let Some(path) = &self.history.database_path
             && path.as_os_str().is_empty()
         {
@@ -318,6 +349,17 @@ mod tests {
             Config::from_toml("[monitoring]\nrefresh_interval_ms = 1\nchart_window_secs = 999999\n").unwrap();
         assert_eq!(loaded.config.monitoring.refresh_interval_ms, MIN_REFRESH_MS);
         assert_eq!(loaded.config.monitoring.chart_window_secs, MAX_CHART_WINDOW_SECS);
+        assert_eq!(loaded.warnings.len(), 2);
+    }
+
+    #[test]
+    fn process_columns_are_normalized() {
+        let loaded =
+            Config::from_toml("[processes]\nvisible_columns = [\"pid\", \"cpu\", \"pid\"]\n").unwrap();
+        assert_eq!(
+            loaded.config.processes.visible_columns,
+            vec![ProcessColumn::Name, ProcessColumn::Pid, ProcessColumn::Cpu]
+        );
         assert_eq!(loaded.warnings.len(), 2);
     }
 

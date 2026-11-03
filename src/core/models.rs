@@ -3,6 +3,7 @@
 //! Optional fields use `None` to mean "the platform could not provide this
 //! value", which the UI must render differently from a measured zero.
 
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
@@ -51,12 +52,128 @@ impl Section {
 /// Identifies one process *instance*.
 ///
 /// Windows reuses PIDs, so a PID alone is not a stable identity over time.
-/// Combining it with the process start time (seconds since the Unix epoch)
-/// distinguishes a new process that happens to receive a recycled PID.
+/// Combining it with the process creation time distinguishes a new process
+/// that happens to receive a recycled PID.
+///
+/// `start_time` is a platform-specific monotonic stamp: on Windows the raw
+/// creation `FILETIME` (100 ns units since 1601), elsewhere seconds since the
+/// Unix epoch. It is 0 when the creation time could not be read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ProcessKey {
     pub pid: u32,
     pub start_time: u64,
+}
+
+/// CPU architecture of a process image.
+// Only the Windows backend can determine the architecture.
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Architecture {
+    X64,
+    X86,
+    Arm64,
+    Other(u16),
+}
+
+impl Architecture {
+    pub fn label(self) -> String {
+        match self {
+            Self::X64 => "x64".into(),
+            Self::X86 => "x86".into(),
+            Self::Arm64 => "ARM64".into(),
+            Self::Other(machine) => format!("0x{machine:04x}"),
+        }
+    }
+}
+
+// Windows only reports `Running`; other states come from the fallback backend.
+#[cfg_attr(windows, allow(dead_code))]
+/// Coarse process state. Windows does not expose a single "state" for a
+/// process, so live processes report `Running` unless a platform can say more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ProcessStatus {
+    Running,
+    Sleeping,
+    Stopped,
+    Zombie,
+    Unknown,
+}
+
+impl ProcessStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Running => "Running",
+            Self::Sleeping => "Sleeping",
+            Self::Stopped => "Stopped",
+            Self::Zombie => "Zombie",
+            Self::Unknown => "Unknown",
+        }
+    }
+}
+
+/// How much ProcX could read about a process with its current privileges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AccessLevel {
+    /// The process could be opened for (limited) queries.
+    Queryable,
+    /// The process could not be opened; only enumeration data is available.
+    Denied,
+}
+
+/// One process as seen in a single sample. Every optional field is `None`
+/// when the platform could not provide it (commonly: access denied).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProcessInfo {
+    pub key: ProcessKey,
+    pub parent_pid: Option<u32>,
+    pub name: Arc<str>,
+    pub exe_path: Option<Arc<str>>,
+    pub user: Option<Arc<str>>,
+    pub architecture: Option<Architecture>,
+    pub session_id: Option<u32>,
+    pub started_at: Option<SystemTime>,
+    /// CPU utilization normalized to all logical processors, 0..=100.
+    /// `None` until two samples exist or if CPU times are unreadable.
+    pub cpu_percent: Option<f32>,
+    /// Total CPU time (kernel + user) consumed so far.
+    pub cpu_time: Option<Duration>,
+    /// Working set (resident memory) in bytes.
+    pub working_set: Option<u64>,
+    pub peak_working_set: Option<u64>,
+    /// Private committed memory in bytes.
+    pub private_bytes: Option<u64>,
+    pub threads: Option<u32>,
+    pub handles: Option<u32>,
+    pub status: ProcessStatus,
+    pub access: AccessLevel,
+    /// Whether Windows marks the process critical (terminating it bugchecks the system).
+    pub critical: Option<bool>,
+}
+
+impl ProcessInfo {
+    /// A process with only identity fields set.
+    pub fn new(key: ProcessKey, name: impl Into<Arc<str>>) -> Self {
+        Self {
+            key,
+            parent_pid: None,
+            name: name.into(),
+            exe_path: None,
+            user: None,
+            architecture: None,
+            session_id: None,
+            started_at: None,
+            cpu_percent: None,
+            cpu_time: None,
+            working_set: None,
+            peak_working_set: None,
+            private_bytes: None,
+            threads: None,
+            handles: None,
+            status: ProcessStatus::Unknown,
+            access: AccessLevel::Denied,
+            critical: None,
+        }
+    }
 }
 
 /// Information gathered once at start-up.
@@ -209,6 +326,8 @@ pub struct SystemSnapshot {
     pub counts: SystemCounts,
     pub top_cpu: Vec<ProcessSummary>,
     pub top_memory: Vec<ProcessSummary>,
+    /// Every process in this sample, shared cheaply with the UI.
+    pub processes: Arc<[ProcessInfo]>,
     /// Process starts/exits since the previous sample. Empty on the first sample.
     pub activity: Vec<ActivityEvent>,
     /// Number of activity events omitted because too many happened at once.

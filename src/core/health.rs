@@ -80,6 +80,7 @@ pub fn evaluate(snapshot: &SystemSnapshot, sustained_cpu: Option<f64>) -> Vec<He
 mod tests {
     use super::*;
     use crate::core::models::*;
+    use std::sync::Arc;
     use std::time::{Duration, SystemTime};
 
     fn snapshot() -> SystemSnapshot {
@@ -103,6 +104,7 @@ mod tests {
             counts: SystemCounts::default(),
             top_cpu: vec![],
             top_memory: vec![],
+            processes: Arc::from(Vec::new()),
             activity: vec![],
             activity_overflow: 0,
         }

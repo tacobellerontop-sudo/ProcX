@@ -8,6 +8,7 @@ mod core;
 mod logging;
 mod monitoring;
 mod platform;
+mod process;
 mod ui;
 mod utils;
 

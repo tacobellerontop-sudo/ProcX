@@ -58,3 +58,15 @@ pub fn top_processes(
             }
         });
 }
+
+/// Two-column label/value grid with selectable values.
+pub fn key_values(ui: &mut egui::Ui, id: &str, rows: &[(&str, String)]) {
+    let muted = Palette::of(ui).muted;
+    Grid::new(id).num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
+        for (k, v) in rows {
+            ui.label(RichText::new(*k).color(muted));
+            ui.add(egui::Label::new(v).wrap().selectable(true));
+            ui.end_row();
+        }
+    });
+}

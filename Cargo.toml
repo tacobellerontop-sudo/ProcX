@@ -2,7 +2,7 @@
 name = "procx"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.95"
 description = "Advanced Windows process and system monitoring suite"
 license = "MIT"
 publish = false
@@ -17,13 +17,18 @@ toml = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"] }
 crossbeam-channel = "0.5"
+egui_extras = { version = "0.37", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_ProcessStatus",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_SystemInformation",
     "Win32_System_Threading",
+    "Wdk_System_Threading",
 ] }
 
 # Non-Windows builds exist only so the platform-independent core can be

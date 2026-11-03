@@ -1,16 +1,16 @@
 //! Process-level summaries for the dashboard: top consumers and
 //! start/exit activity.
 //!
-//! The full process explorer (Phase 2) builds on the same refresh but needs
-//! richer per-process metadata from the platform layer.
+//! The process list itself comes from the platform layer; this module adds
+//! CPU utilization (from CPU-time deltas) and derived dashboards data.
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
-use std::time::SystemTime;
+use std::sync::Arc;
+use std::time::{Duration, Instant, SystemTime};
 
-use sysinfo::{Pid, Process, ProcessRefreshKind, ProcessesToUpdate, System};
-
-use crate::core::models::{ActivityEvent, ActivityKind, ProcessKey, ProcessSummary};
+use crate::core::models::{ActivityEvent, ActivityKind, ProcessInfo, ProcessKey, ProcessSummary};
+use crate::platform::ProcessEnumerator;
 
 /// Number of processes listed in each top-N table.
 pub const TOP_N: usize = 8;
@@ -81,10 +81,37 @@ impl ActivityTracker {
     }
 }
 
-fn key_of(pid: Pid, process: &Process) -> ProcessKey {
-    ProcessKey {
-        pid: pid.as_u32(),
-        start_time: process.start_time(),
+/// Converts cumulative CPU time into utilization by diffing consecutive samples.
+#[derive(Default)]
+pub struct CpuTracker {
+    previous: HashMap<ProcessKey, Duration>,
+    current: HashMap<ProcessKey, Duration>,
+}
+
+impl CpuTracker {
+    /// Returns utilization (0..=100, normalized to all logical CPUs) for a
+    /// process given its cumulative CPU time. `None` on the first sighting.
+    pub fn observe(
+        &mut self,
+        key: ProcessKey,
+        cpu_time: Duration,
+        elapsed: Duration,
+        logical_cpus: f32,
+    ) -> Option<f32> {
+        self.current.insert(key, cpu_time);
+        let prev = *self.previous.get(&key)?;
+        let wall = elapsed.as_secs_f64() * f64::from(logical_cpus);
+        if wall <= 0.0 {
+            return None;
+        }
+        let used = cpu_time.saturating_sub(prev).as_secs_f64();
+        Some(((used / wall) * 100.0).clamp(0.0, 100.0) as f32)
+    }
+
+    /// Ends a sample; processes not observed are forgotten.
+    pub fn finish(&mut self) {
+        std::mem::swap(&mut self.previous, &mut self.current);
+        self.current.clear();
     }
 }
 
@@ -98,60 +125,78 @@ where
 }
 
 pub struct ProcessSample {
-    pub count: usize,
+    pub processes: Arc<[ProcessInfo]>,
     pub top_cpu: Vec<ProcessSummary>,
     pub top_memory: Vec<ProcessSummary>,
     pub activity: Vec<ActivityEvent>,
     pub activity_overflow: usize,
+    pub error: Option<String>,
 }
 
 pub struct ProcessSampler {
+    enumerator: ProcessEnumerator,
     activity: ActivityTracker,
+    cpu: CpuTracker,
     logical_cpus: f32,
+    last: Option<Instant>,
+    capacity_hint: usize,
+}
+
+fn summarize(p: &ProcessInfo) -> ProcessSummary {
+    ProcessSummary {
+        key: p.key,
+        name: p.name.to_string(),
+        cpu_percent: p.cpu_percent.unwrap_or(0.0),
+        memory_bytes: p.working_set.unwrap_or(0),
+    }
 }
 
 impl ProcessSampler {
     pub fn new(logical_cpus: usize) -> Self {
         Self {
+            enumerator: ProcessEnumerator::new(),
             activity: ActivityTracker::default(),
+            cpu: CpuTracker::default(),
             logical_cpus: logical_cpus.max(1) as f32,
+            last: None,
+            capacity_hint: 256,
         }
     }
 
-    pub fn sample(&mut self, sys: &mut System, now: SystemTime) -> ProcessSample {
-        sys.refresh_processes_specifics(
-            ProcessesToUpdate::All,
-            true,
-            ProcessRefreshKind::nothing().with_cpu().with_memory(),
-        );
-        // On Linux, sysinfo may list threads alongside processes; Windows never does.
-        let processes = || sys.processes().iter().filter(|(_, p)| p.thread_kind().is_none());
+    pub fn sample(&mut self, now: SystemTime) -> ProcessSample {
+        let started = Instant::now();
+        let elapsed = self.last.map(|l| started.duration_since(l)).unwrap_or_default();
+        self.last = Some(started);
 
-        let (activity, activity_overflow) = self.activity.observe(
-            processes().map(|(&pid, p)| (key_of(pid, p), p.name().to_str().unwrap_or("?"))),
-            now,
-        );
+        let mut list = Vec::with_capacity(self.capacity_hint);
+        let error = self.enumerator.enumerate(&mut list).err();
+        self.capacity_hint = list.len() + 32;
 
-        let summarize = |(pid, p): (&Pid, &Process)| ProcessSummary {
-            key: key_of(*pid, p),
-            name: p.name().to_string_lossy().into_owned(),
-            cpu_percent: (p.cpu_usage() / self.logical_cpus).clamp(0.0, 100.0),
-            memory_bytes: p.memory(),
-        };
+        for p in &mut list {
+            if let Some(t) = p.cpu_time {
+                p.cpu_percent = self.cpu.observe(p.key, t, elapsed, self.logical_cpus);
+            }
+        }
+        self.cpu.finish();
 
-        // PID 0 is the "System Idle Process" on Windows; its "CPU usage" is idle time.
-        let mut by_cpu: Vec<_> = processes().filter(|(pid, _)| pid.as_u32() != 0).collect();
-        top_by(&mut by_cpu, TOP_N, |(_, p)| f64::from(p.cpu_usage()));
-        let mut by_mem: Vec<_> = processes().collect();
-        let count = by_mem.len();
-        top_by(&mut by_mem, TOP_N, |(_, p)| p.memory() as f64);
+        let (activity, activity_overflow) =
+            self.activity.observe(list.iter().map(|p| (p.key, &*p.name)), now);
+
+        // PID 0 is the "System Idle Process"; it never consumes real CPU.
+        let mut by_cpu: Vec<&ProcessInfo> = list.iter().filter(|p| p.key.pid != 0).collect();
+        top_by(&mut by_cpu, TOP_N, |p| f64::from(p.cpu_percent.unwrap_or(0.0)));
+        let mut by_mem: Vec<&ProcessInfo> = list.iter().collect();
+        top_by(&mut by_mem, TOP_N, |p| p.working_set.unwrap_or(0) as f64);
+        let top_cpu = by_cpu.into_iter().map(summarize).collect();
+        let top_memory = by_mem.into_iter().map(summarize).collect();
 
         ProcessSample {
-            count,
-            top_cpu: by_cpu.into_iter().map(summarize).collect(),
-            top_memory: by_mem.into_iter().map(summarize).collect(),
+            processes: Arc::from(list),
+            top_cpu,
+            top_memory,
             activity,
             activity_overflow,
+            error,
         }
     }
 }
@@ -205,6 +250,21 @@ mod tests {
         let (events, overflow) = t.observe(many.into_iter(), now);
         assert_eq!(events.len(), MAX_ACTIVITY_PER_SAMPLE);
         assert_eq!(overflow, 100 - MAX_ACTIVITY_PER_SAMPLE);
+    }
+
+    #[test]
+    fn cpu_from_time_deltas() {
+        let mut t = CpuTracker::default();
+        let k = key(1, 1);
+        let sec = Duration::from_secs(1);
+        assert_eq!(t.observe(k, Duration::from_millis(100), sec, 2.0), None);
+        t.finish();
+        // 500 ms of CPU over 1 s on 2 logical CPUs = 25 %.
+        assert_eq!(t.observe(k, Duration::from_millis(600), sec, 2.0), Some(25.0));
+        t.finish();
+        // A process not seen in a sample is forgotten.
+        t.finish();
+        assert_eq!(t.observe(k, Duration::from_millis(700), sec, 2.0), None);
     }
 
     #[test]
