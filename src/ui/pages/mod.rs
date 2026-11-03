@@ -24,8 +24,9 @@ pub fn status(section: Section) -> PageStatus {
         | Section::Settings
         | Section::Processes
         | Section::Details
-        | Section::Performance => PageStatus::Ready,
-        Section::Services | Section::Startup => PageStatus::Planned("Phase 4"),
+        | Section::Performance
+        | Section::Services
+        | Section::Startup => PageStatus::Ready,
         Section::History => PageStatus::Planned("Phase 5"),
     }
 }

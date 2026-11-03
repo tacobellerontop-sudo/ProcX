@@ -127,7 +127,7 @@ fn text_cell(ui: &mut egui::Ui, value: Option<String>, numeric: bool) {
 }
 
 #[derive(Clone, Copy)]
-enum Arrow {
+pub enum Arrow {
     Right,
     Down,
     Up,
@@ -135,7 +135,7 @@ enum Arrow {
 
 /// Paints a small triangle. Painted rather than drawn as a glyph so it does
 /// not depend on font coverage.
-fn arrow(ui: &mut egui::Ui, dir: Arrow, color: egui::Color32, sense: Sense) -> egui::Response {
+pub fn arrow(ui: &mut egui::Ui, dir: Arrow, color: egui::Color32, sense: Sense) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), sense);
     let c = rect.center();
     let r = 3.5;

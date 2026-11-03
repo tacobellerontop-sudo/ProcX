@@ -19,6 +19,8 @@ use crate::ui::navigation::{self, GlobalAction};
 use crate::ui::pages::details::{DetailsAction, DetailsPage};
 use crate::ui::pages::performance::PerformancePage;
 use crate::ui::pages::processes::{ProcessesAction, ProcessesPage};
+use crate::ui::pages::services::{ServicesAction, ServicesPage};
+use crate::ui::pages::startup::{StartupAction, StartupPage};
 use crate::ui::pages::{self, settings::SettingsAction, settings::SettingsPage};
 use crate::ui::theme::{self, Palette};
 use live::LiveState;
@@ -33,6 +35,8 @@ pub struct ProcxApp {
     processes_page: ProcessesPage,
     details_page: DetailsPage,
     performance_page: PerformancePage,
+    services_page: ServicesPage,
+    startup_page: StartupPage,
     worker: Option<ProcessWorker>,
     /// Transient status message: (text, is_error, shown_at).
     notice: Option<(String, bool, Instant)>,
@@ -84,6 +88,8 @@ impl ProcxApp {
             processes_page: ProcessesPage::default(),
             details_page: DetailsPage::default(),
             performance_page: PerformancePage::new(config_chart_window),
+            services_page: ServicesPage::default(),
+            startup_page: StartupPage::default(),
             worker,
             notice: None,
             own_pid: std::process::id(),
@@ -134,6 +140,13 @@ impl ProcxApp {
                 ProcessResponse::OpenLocationFailed(e) => {
                     self.notify(format!("Could not open file location: {e}"), true)
                 }
+                ProcessResponse::Services(result) => self.services_page.on_services(result),
+                ProcessResponse::Startup(result) => self.startup_page.on_entries(result),
+                ProcessResponse::ServiceChanged { action, result }
+                | ProcessResponse::StartupChanged { action, result } => match result {
+                    Ok(()) => self.notify(format!("{action}: done"), false),
+                    Err(e) => self.notify(format!("{action} failed: {e}"), true),
+                },
             }
         }
     }
@@ -163,6 +176,61 @@ impl ProcxApp {
                 DetailsAction::Select(key) => {
                     self.processes_page.select(key);
                     self.show_details(key);
+                }
+            }
+        }
+    }
+
+    fn handle_services_actions(&mut self, actions: Vec<ServicesAction>) {
+        for action in actions {
+            match action {
+                ServicesAction::Refresh => {
+                    self.services_page.set_loading();
+                    self.send_worker(ProcessRequest::ListServices);
+                }
+                ServicesAction::Control { name, control } => {
+                    self.services_page.set_loading();
+                    self.send_worker(ProcessRequest::ControlService { name, control });
+                }
+                ServicesAction::SetStartType { name, start } => {
+                    self.services_page.set_loading();
+                    self.send_worker(ProcessRequest::SetServiceStartType { name, start });
+                }
+                ServicesAction::ShowProcess(pid) => {
+                    let key = self
+                        .live
+                        .latest
+                        .as_ref()
+                        .and_then(|s| s.processes.iter().find(|p| p.key.pid == pid).map(|p| p.key));
+                    match key {
+                        Some(key) => {
+                            self.processes_page.select(key);
+                            self.show_details(key);
+                        }
+                        None => {
+                            self.notify(format!("Process {pid} is not in the current process list"), true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn handle_startup_actions(&mut self, ctx: &egui::Context, actions: Vec<StartupAction>) {
+        for action in actions {
+            match action {
+                StartupAction::Refresh => {
+                    self.startup_page.set_loading();
+                    self.send_worker(ProcessRequest::ListStartup);
+                }
+                StartupAction::SetStatus { source, name, status } => {
+                    self.startup_page.set_loading();
+                    self.send_worker(ProcessRequest::SetStartupStatus { source, name, status });
+                }
+                StartupAction::OpenLocation(path) => self.send_worker(ProcessRequest::OpenLocation(path)),
+                StartupAction::Copy(text) => {
+                    ctx.copy_text(text);
+                    self.notify("Copied to clipboard", false);
                 }
             }
         }
@@ -322,6 +390,9 @@ impl eframe::App for ProcxApp {
         let mut settings_action = None;
         let mut process_actions = Vec::new();
         let mut details_actions = Vec::new();
+        let mut services_actions = Vec::new();
+        let mut startup_actions = Vec::new();
+        let elevated = self.live.info.as_ref().and_then(|i| i.elevated);
         let total_memory = self.live.latest.as_ref().map_or(0, |s| s.memory.total);
         let window = f64::from(self.config.monitoring.chart_window_secs);
         egui::CentralPanel::default_margins().show(ui, |ui| match self.section {
@@ -342,8 +413,16 @@ impl eframe::App for ProcxApp {
                 self.performance_page
                     .show(ui, &self.live, self.config.monitoring.refresh_interval_ms)
             }
-            Section::Services => pages::services::show(ui),
-            Section::Startup => pages::startup::show(ui),
+            Section::Services => {
+                services_actions =
+                    self.services_page
+                        .show(ui, self.config.confirmations.service_changes, elevated);
+            }
+            Section::Startup => {
+                startup_actions =
+                    self.startup_page
+                        .show(ui, self.config.confirmations.startup_changes, elevated);
+            }
             Section::Details => {
                 details_actions = self.details_page.show(
                     ui,
@@ -360,6 +439,8 @@ impl eframe::App for ProcxApp {
         });
         self.handle_processes_actions(&ctx, process_actions);
         self.handle_details_actions(details_actions);
+        self.handle_services_actions(services_actions);
+        self.handle_startup_actions(&ctx, startup_actions);
         if let Some(SettingsAction::Save(new)) = settings_action {
             self.apply_settings(&ctx, new);
         }

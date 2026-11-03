@@ -19,11 +19,20 @@ An advanced process and system monitor for Windows 10/11 (x64), written in Rust 
   critical, and ProcX itself are refused; the process identity (PID + creation time) is re-verified
   immediately before `TerminateProcess` so a recycled PID is never hit.
 - **Details**: general info including command line, performance with per-process charts, threads,
-  loaded modules, and parent/children. Access-denied parts are reported individually.
+  loaded modules, and parent/children, plus the executable's description, company and version. Access-denied parts are reported individually.
 - **Performance**: CPU (overall and per logical processor), memory (in use, cache, pools, commit,
   page file), physical disks (active time and throughput via `IOCTL_DISK_PERFORMANCE`, no admin
   needed) plus volumes, and per-interface network throughput, with 1 min to 1 hour ranges. Long
   ranges are thinned for drawing and memory is capped at 3,600 samples per series.
+- **Services**: every Win32 service with status, startup type, PID, account, executable,
+  dependencies and dependents; search and running/stopped filter. Start, stop and startup-type
+  changes go through a confirmation that names running dependents, and the list is re-read from
+  Windows afterwards rather than assumed. Changes generally need administrator rights; ProcX
+  reports the denial instead of elevating itself.
+- **Startup**: entries from the registry Run/RunOnce keys (per-user, all-users and 32-bit) and both
+  Startup folders, with publisher from the program's version information. Enable/disable uses the
+  same `StartupApproved` flags as Task Manager and Windows Settings, after confirmation; entries
+  are never deleted. Scheduled tasks are not listed yet.
 - **Background collector**: all system queries run on a dedicated worker thread and reach the UI
   through a bounded channel, so the UI never blocks on the OS.
 - **Settings** persisted as TOML (`%APPDATA%\ProcX\procx.toml`), validated on load with safe
@@ -64,6 +73,6 @@ UI code never calls OS APIs directly; it renders snapshots produced by the colle
 1. ~~Foundation~~ (done)
 2. ~~Process explorer: table, tree, details window, safe termination~~ (done)
 3. ~~Performance: per-core CPU, memory/page file, per-disk, per-interface charts~~ (done)
-4. Windows integration: services and startup managers
+4. ~~Windows integration: services and startup managers~~ (done)
 5. History: SQLite recording keyed by process instance, charts, CSV export
 6. Polish: tray, more shortcuts, release builds

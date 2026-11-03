@@ -208,12 +208,23 @@ impl DetailsPage {
                 )
             },
         );
+        let file_field = |f: fn(&crate::platform::FileVersionInfo) -> &Option<String>| match &self.details {
+            None => "Loading…".to_owned(),
+            Some(d) => d
+                .file_info
+                .as_ref()
+                .and_then(|i| f(i).clone())
+                .unwrap_or_else(|| UNAVAILABLE.to_owned()),
+        };
         section(ui, "GENERAL", |ui| {
             key_values(
                 ui,
                 "details_general",
                 &[
                     ("Name", p.name.to_string()),
+                    ("Description", file_field(|i| &i.description)),
+                    ("Company", file_field(|i| &i.company)),
+                    ("File version", file_field(|i| &i.version)),
                     ("PID", p.key.pid.to_string()),
                     ("Parent PID", opt(p.parent_pid)),
                     (

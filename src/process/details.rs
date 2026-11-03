@@ -24,4 +24,6 @@ pub struct ProcessDetails {
     pub command_line: Result<String, String>,
     pub threads: Result<Vec<ThreadInfo>, String>,
     pub modules: Result<Vec<ModuleInfo>, String>,
+    /// Version resource of the executable; `None` when unreadable or absent.
+    pub file_info: Option<crate::platform::FileVersionInfo>,
 }

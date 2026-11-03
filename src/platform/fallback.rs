@@ -22,12 +22,39 @@ pub fn is_elevated() -> Option<bool> {
     None
 }
 
+const WINDOWS_ONLY: &str = "Only available on Windows";
+
+pub fn list_services() -> Result<Vec<crate::core::services::ServiceInfo>, String> {
+    Err(WINDOWS_ONLY.into())
+}
+
+pub fn control_service(_name: &str, _control: crate::core::services::ServiceControl) -> Result<(), String> {
+    Err(WINDOWS_ONLY.into())
+}
+
+pub fn set_service_start_type(_name: &str, _start: crate::core::services::StartType) -> Result<(), String> {
+    Err(WINDOWS_ONLY.into())
+}
+
+pub fn list_startup() -> Result<Vec<crate::core::startup::StartupEntry>, String> {
+    Err(WINDOWS_ONLY.into())
+}
+
+pub fn set_startup_status(
+    _source: crate::core::startup::StartupSource,
+    _name: &str,
+    _status: crate::core::startup::StartupStatus,
+) -> Result<(), String> {
+    Err(WINDOWS_ONLY.into())
+}
+
 pub fn physical_disk_counters(_index: u32) -> Option<super::PhysicalDiskCounters> {
     None
 }
 
 pub fn inspect_process(_key: ProcessKey) -> ProcessDetails {
     ProcessDetails {
+        file_info: None,
         command_line: Err(UNSUPPORTED.into()),
         threads: Err(UNSUPPORTED.into()),
         modules: Err(UNSUPPORTED.into()),

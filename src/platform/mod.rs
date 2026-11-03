@@ -21,6 +21,8 @@ use windows as imp;
 pub use imp::ProcessEnumerator;
 
 use crate::core::models::ProcessKey;
+use crate::core::services::{ServiceControl, ServiceInfo, StartType};
+use crate::core::startup::{StartupEntry, StartupSource, StartupStatus};
 use crate::process::details::ProcessDetails;
 
 /// Reads command line, threads and modules of one process instance.
@@ -39,6 +41,41 @@ pub fn terminate_process(key: ProcessKey) -> Result<(), String> {
 /// Shows the file in the system file manager.
 pub fn open_file_location(path: &str) -> Result<(), String> {
     imp::open_file_location(path)
+}
+
+/// Selected strings from a file's version resource.
+#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FileVersionInfo {
+    pub company: Option<String>,
+    pub description: Option<String>,
+    pub version: Option<String>,
+}
+
+/// Lists Win32 services with their configuration. Slow (one query per
+/// service); call from a worker thread.
+pub fn list_services() -> Result<Vec<ServiceInfo>, String> {
+    imp::list_services()
+}
+
+/// Starts or stops a service. Callers must obtain user confirmation.
+pub fn control_service(name: &str, control: ServiceControl) -> Result<(), String> {
+    imp::control_service(name, control)
+}
+
+/// Changes a service's startup type. Callers must obtain user confirmation.
+pub fn set_service_start_type(name: &str, start: StartType) -> Result<(), String> {
+    imp::set_service_start_type(name, start)
+}
+
+/// Lists startup entries from Run keys and Startup folders.
+pub fn list_startup() -> Result<Vec<StartupEntry>, String> {
+    imp::list_startup()
+}
+
+/// Enables or disables a startup entry (never deletes it).
+pub fn set_startup_status(source: StartupSource, name: &str, status: StartupStatus) -> Result<(), String> {
+    imp::set_startup_status(source, name, status)
 }
 
 /// System-wide counters that the cross-platform crates do not expose.
@@ -131,5 +168,20 @@ mod tests {
     #[test]
     fn elevation_is_known() {
         assert!(super::is_elevated().is_some());
+    }
+
+    #[test]
+    fn lists_services_read_only() {
+        let services = super::list_services().expect("the service list should be readable without elevation");
+        assert!(!services.is_empty());
+        assert!(services.iter().all(|s| !s.name.is_empty()));
+        // Some service is running on any live system.
+        assert!(services.iter().any(|s| s.state.is_running()));
+    }
+
+    #[test]
+    fn lists_startup_read_only() {
+        let entries = super::list_startup().expect("startup sources should be readable");
+        assert!(entries.iter().all(|e| !e.name.is_empty()));
     }
 }

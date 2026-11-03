@@ -12,6 +12,8 @@ use crossbeam_channel::{Receiver, Sender};
 use super::details::ProcessDetails;
 use crate::core::errors::{ProcxError, Result};
 use crate::core::models::ProcessKey;
+use crate::core::services::{ServiceControl, ServiceInfo, StartType};
+use crate::core::startup::{StartupEntry, StartupSource, StartupStatus};
 use crate::monitoring::collector::Notifier;
 use crate::platform;
 
@@ -23,6 +25,24 @@ pub enum ProcessRequest {
     /// Terminate processes the user already confirmed.
     Terminate(Vec<(ProcessKey, String)>),
     OpenLocation(String),
+    ListServices,
+    /// A service start/stop the user already confirmed.
+    ControlService {
+        name: String,
+        control: ServiceControl,
+    },
+    /// A start-type change the user already confirmed.
+    SetServiceStartType {
+        name: String,
+        start: StartType,
+    },
+    ListStartup,
+    /// An enable/disable the user already confirmed.
+    SetStartupStatus {
+        source: StartupSource,
+        name: String,
+        status: StartupStatus,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +54,17 @@ pub enum ProcessResponse {
         result: std::result::Result<(), String>,
     },
     OpenLocationFailed(String),
+    Services(std::result::Result<Vec<ServiceInfo>, String>),
+    /// Outcome of a service change; `action` describes it for the user.
+    ServiceChanged {
+        action: String,
+        result: std::result::Result<(), String>,
+    },
+    Startup(std::result::Result<Vec<StartupEntry>, String>),
+    StartupChanged {
+        action: String,
+        result: std::result::Result<(), String>,
+    },
 }
 
 pub struct ProcessWorker {
@@ -131,5 +162,53 @@ fn handle(request: ProcessRequest) -> Vec<ProcessResponse> {
             Ok(()) => Vec::new(),
             Err(e) => vec![ProcessResponse::OpenLocationFailed(e)],
         },
+        ProcessRequest::ListServices => vec![ProcessResponse::Services(platform::list_services())],
+        ProcessRequest::ControlService { name, control } => {
+            let result = platform::control_service(&name, control);
+            log_change("service control", &name, control.label(), &result);
+            vec![
+                ProcessResponse::ServiceChanged {
+                    action: format!("{} service {name}", control.label()),
+                    result,
+                },
+                // Re-list so the page shows the state Windows reports, not an assumed one.
+                ProcessResponse::Services(platform::list_services()),
+            ]
+        }
+        ProcessRequest::SetServiceStartType { name, start } => {
+            let result = platform::set_service_start_type(&name, start);
+            log_change("service start type", &name, start.label(), &result);
+            vec![
+                ProcessResponse::ServiceChanged {
+                    action: format!("Set start type of {name} to {}", start.label()),
+                    result,
+                },
+                ProcessResponse::Services(platform::list_services()),
+            ]
+        }
+        ProcessRequest::ListStartup => vec![ProcessResponse::Startup(platform::list_startup())],
+        ProcessRequest::SetStartupStatus { source, name, status } => {
+            let verb = match status {
+                StartupStatus::Enabled => "Enable",
+                StartupStatus::Disabled => "Disable",
+            };
+            let result = platform::set_startup_status(source, &name, status);
+            log_change("startup entry", &name, verb, &result);
+            vec![
+                ProcessResponse::StartupChanged {
+                    action: format!("{verb} startup entry {name}"),
+                    result,
+                },
+                ProcessResponse::Startup(platform::list_startup()),
+            ]
+        }
+    }
+}
+
+/// Every configuration change is logged, whether it succeeded or not.
+fn log_change(kind: &str, name: &str, change: &str, result: &std::result::Result<(), String>) {
+    match result {
+        Ok(()) => tracing::info!(%kind, %name, %change, "changed by user"),
+        Err(e) => tracing::warn!(%kind, %name, %change, "change failed: {e}"),
     }
 }

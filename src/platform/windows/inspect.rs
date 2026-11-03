@@ -172,7 +172,13 @@ fn modules(pid: u32) -> Result<Vec<ModuleInfo>, String> {
 
 pub fn inspect_process(key: ProcessKey) -> ProcessDetails {
     let handle = open_verified(key, PROCESS_QUERY_LIMITED_INFORMATION);
+    let file_info = handle
+        .as_ref()
+        .ok()
+        .and_then(|h| super::processes::image_path(h.raw()))
+        .and_then(|path| super::files::file_version_info(&path));
     ProcessDetails {
+        file_info,
         command_line: handle
             .as_ref()
             .map_err(Clone::clone)
